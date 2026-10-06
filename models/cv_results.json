@@ -1,0 +1,101 @@
+{
+  "config": {
+    "lam": 0.03,
+    "depth": 3,
+    "n_est": 300,
+    "w_linear": 0.25
+  },
+  "anchors": {
+    "lo": -0.657661508214215,
+    "hi": 8.204234926705048
+  },
+  "standardization": {
+    "mu_a": 0.7638767620625503,
+    "sd_a": 2.4758947259656137,
+    "mu_b": 0.023797258734703064,
+    "sd_b": 0.10654158145189285
+  },
+  "loso": {
+    "LINEAR": {
+      "seasons": 47,
+      "winner_acc": 0.6808510638297872,
+      "winner_in_top3": 0.9574468085106383,
+      "top5_overlap": 0.7446808510638301,
+      "voter_spearman": 0.781043622625433
+    },
+    "XGB": {
+      "seasons": 47,
+      "winner_acc": 0.723404255319149,
+      "winner_in_top3": 0.9574468085106383,
+      "top5_overlap": 0.7617021276595746,
+      "voter_spearman": 0.7976454035008159
+    },
+    "BLEND": {
+      "seasons": 47,
+      "winner_acc": 0.7659574468085106,
+      "winner_in_top3": 0.9574468085106383,
+      "top5_overlap": 0.7617021276595746,
+      "voter_spearman": 0.7951928539554448
+    }
+  },
+  "miss_rate": 0.23404255319148937,
+  "misses": [
+    {
+      "season": 1993,
+      "actual": "Charles Barkley",
+      "predicted": "Michael Jordan"
+    },
+    {
+      "season": 1994,
+      "actual": "Hakeem Olajuwon",
+      "predicted": "David Robinson"
+    },
+    {
+      "season": 1997,
+      "actual": "Karl Malone",
+      "predicted": "Michael Jordan"
+    },
+    {
+      "season": 1999,
+      "actual": "Karl Malone",
+      "predicted": "Shaquille O'Neal"
+    },
+    {
+      "season": 2001,
+      "actual": "Allen Iverson",
+      "predicted": "Shaquille O'Neal"
+    },
+    {
+      "season": 2005,
+      "actual": "Steve Nash",
+      "predicted": "Dirk Nowitzki"
+    },
+    {
+      "season": 2006,
+      "actual": "Steve Nash",
+      "predicted": "LeBron James"
+    },
+    {
+      "season": 2008,
+      "actual": "Kobe Bryant",
+      "predicted": "LeBron James"
+    },
+    {
+      "season": 2011,
+      "actual": "Derrick Rose",
+      "predicted": "LeBron James"
+    },
+    {
+      "season": 2022,
+      "actual": "Nikola Joki\u0107",
+      "predicted": "Giannis Antetokounmpo"
+    },
+    {
+      "season": 2023,
+      "actual": "Joel Embiid",
+      "predicted": "Nikola Joki\u0107"
+    }
+  ],
+  "n_train_rows": 8709,
+  "n_seasons": 47
+}
