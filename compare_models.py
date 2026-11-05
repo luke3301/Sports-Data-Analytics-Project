@@ -8,12 +8,14 @@ Usage:
     python compare_models.py --no-refresh          # reuse today's cached pull
     python compare_models.py --min-games 10        # override the games-played threshold
     python compare_models.py --legacy-darko-merge  # DPM merged the way Model 2's training data was
+    python compare_models.py --save-db             # also store today's snapshot in daily_predictions (TiDB)
 """
 from __future__ import annotations
 
 import argparse
 import re
 import time
+from datetime import date
 from pathlib import Path
 
 import joblib
@@ -125,6 +127,20 @@ def score_model2(pool: pd.DataFrame) -> pd.DataFrame:
     return pool
 
 
+def score_dominance(pool: pd.DataFrame) -> pd.DataFrame:
+    """MVP Dominance Index (mvp_index.py): MVP_INDEX = m * RAW_DOMINANCE + b, unclipped."""
+    path = MODEL_DIR / "mvp_index_bundle.joblib"
+    if not path.exists():
+        print(f"(no {path.name} - run `python mvp_index.py` to add the Dominance Index)")
+        pool["MVP_INDEX"] = np.nan
+        return pool
+    b = joblib.load(path)
+    w = pd.Series(b["weights"])[b["features"]]
+    pool["RAW_DOMINANCE"] = pool[b["features"]].to_numpy() @ w.to_numpy()
+    pool["MVP_INDEX"] = b["m"] * pool["RAW_DOMINANCE"] + b["b"]
+    return pool
+
+
 # --------------------------------------------------------------------------- main
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -135,6 +151,8 @@ def main():
     ap.add_argument("--min-mpg", type=float, default=dp.MIN_MPG)
     ap.add_argument("--legacy-darko-merge", action="store_true",
                     help="merge DPM by the notebook's name key (reproduces Model 2's training data)")
+    ap.add_argument("--save-db", action="store_true",
+                    help="write every eligible player's scores to the daily_predictions table (DATABASE_URL in .env)")
     a = ap.parse_args()
     refresh = not a.no_refresh
 
@@ -148,7 +166,7 @@ def main():
     if pool.empty:
         raise SystemExit("No players pass the eligibility filter - lower --min-games / --min-mpg")
 
-    pool = score_model2(score_model1(pool))
+    pool = score_dominance(score_model2(score_model1(pool)))
     pool["M1_RANK"] = pool["M1_INDEX"].rank(ascending=False, method="first").astype(int)
     pool["M2_RANK"] = pool["M2_SHARE"].rank(ascending=False, method="first").astype(int)
 
@@ -165,14 +183,17 @@ def main():
         "Model 1": m1["PLAYER"] + " (" + m1["TEAM"] + ")",
         "M1 Index": m1["M1_INDEX"].round(1),
         "M1 Share": m1["M1_SHARE"].round(3),
+        "M1 Dom Index": m1["MVP_INDEX"].round(1),
         "M2 rank of M1 pick": m1["M2_RANK"],
         " | ": "|",
         "Model 2": m2["PLAYER"] + " (" + m2["TEAM"] + ")",
         "M2 Share": m2["M2_SHARE"].round(3),
+        "M2 Dom Index": m2["MVP_INDEX"].round(1),
         "M1 rank of M2 pick": m2["M1_RANK"],
     })
     pd.set_option("display.width", 250)
-    print(f"\nTop {n} MVP leaderboard - Model 1 vs. Model 2\n")
+    print(f"\nTop {n} MVP leaderboard - Model 1 vs. Model 2 (Dom Index = unbounded MVP Dominance Index, "
+          f"35 = median player, 82 = average MVP)\n")
     print(side.to_string(index=False))
 
     both = set(m1["PLAYER_ID"]) & set(m2["PLAYER_ID"])
@@ -182,7 +203,15 @@ def main():
     cols = ["PLAYER", "TEAM", "GP", "MPG", "PTS", "TS_PCT", "BPM", "VORP", "TEAM_WIN_PCT", "DPM", "on_off_net_rtg"]
     top = pool[pool["PLAYER_ID"].isin(set(m1["PLAYER_ID"]) | set(m2["PLAYER_ID"]))]
     print("\nInputs for every player in either top list:")
-    print(top.sort_values("M2_RANK")[cols + ["M1_RANK", "M2_RANK"]].round(3).to_string(index=False))
+    print(top.sort_values("M2_RANK")[cols + ["MVP_INDEX", "M1_RANK", "M2_RANK"]].round(3).to_string(index=False))
+
+    if a.save_db:
+        from db_sync import get_engine, write_daily_predictions  # only needed (and only imported) with --save-db
+
+        engine = get_engine()
+        n_saved = write_daily_predictions(engine, pool, season_id=a.season)
+        print(f"\nSaved {n_saved} live players for {dp.season_label(a.season)} ({date.today()}) "
+              f"to daily_predictions on {engine.url.host or engine.url.database}")
 
 
 if __name__ == "__main__":
