@@ -1,8 +1,8 @@
 name: Update MVP predictions
 
+# Manual only. The nightly run happens on a Mac via launchd (run_nightly.sh), because stats.nba.com
+# blocks GitHub Actions' cloud IPs. Running this from GitHub will fail fast at the nba_api step.
 on:
-  schedule:
-    - cron: "0 8 * * *"   # 08:00 UTC daily = 3:00 AM EST (4:00 AM during daylight saving time)
   workflow_dispatch:        # "Run workflow" button in the Actions tab
 
 concurrency:

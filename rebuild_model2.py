@@ -102,9 +102,9 @@ def merge_report(old: pd.DataFrame, new: pd.DataFrame) -> None:
 
 # --------------------------------------------------------------------------- 2. traded-player duplicates
 def listed_team_on_off(season_id: int, team_id: int, player_id: str) -> float:
-    res = dp._retry(lambda: teamplayeronoffsummary.TeamPlayerOnOffSummary(
+    res = dp.nba_call(lambda: teamplayeronoffsummary.TeamPlayerOnOffSummary(
         team_id=team_id, season=dp.season_label(season_id),
-        measure_type_detailed_defense="Advanced", timeout=60).get_data_frames(),
+        measure_type_detailed_defense="Advanced", timeout=dp.NBA_TIMEOUT).get_data_frames(),
         f"on/off {season_id} team {team_id}")
     on, off = res[1], res[2]
     on = on[on["VS_PLAYER_ID"].astype(str) == player_id]["NET_RATING"]

@@ -107,10 +107,12 @@ def add_on_off(df: pd.DataFrame, season_id: int, refresh: bool) -> pd.DataFrame:
         print(f"Pulling on/off for {len(cand)} candidates across {len(teams)} teams ...")
         for team_id in teams:
             try:
-                res = dp._retry(lambda: teamplayeronoffsummary.TeamPlayerOnOffSummary(
+                res = dp.nba_call(lambda: teamplayeronoffsummary.TeamPlayerOnOffSummary(
                     team_id=team_id, season=dp.season_label(season_id),
-                    measure_type_detailed_defense="Advanced", timeout=60).get_data_frames(),
+                    measure_type_detailed_defense="Advanced", timeout=dp.NBA_TIMEOUT).get_data_frames(),
                     f"on/off team {team_id}")
+            except dp.NBAUnreachableError:
+                raise  # blocked: stop now rather than time out once per team (and don't cache nothing)
             except RuntimeError as e:
                 print(f"  ! skipped team {team_id}: {e}")
                 continue
@@ -241,4 +243,7 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except dp.NBAUnreachableError as e:
+        raise SystemExit(f"\nERROR: {e}") from None

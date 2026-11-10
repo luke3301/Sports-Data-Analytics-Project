@@ -36,6 +36,8 @@ RAW_DIR = ROOT / "data" / "raw"
 PROC_DIR = ROOT / "data" / "processed"
 
 NBA_API_SLEEP = 1.5      # seconds between stats.nba.com calls
+NBA_TIMEOUT = 20         # seconds per stats.nba.com request; it answers in a few seconds or not at all
+NBA_TRIES = 2            # attempts per request before declaring stats.nba.com unreachable
 BBREF_SLEEP = 4.0        # bbref allows ~20 req/min; stay well under
 MIN_MPG = 20.0           # eligibility: minutes per game
 GAMES_FRACTION = 65 / 82  # strict eligibility (2023-24 onward): 65 of 82 games
@@ -100,6 +102,43 @@ def _retry(fn, what: str, tries: int = 4, base_sleep: float = 5.0):
             time.sleep(wait)
 
 
+class NBAUnreachableError(RuntimeError):
+    """stats.nba.com isn't answering (timeouts / refused connections), typically because it blocks
+    cloud and data-center IPs such as GitHub Actions runners."""
+
+
+_nba_unreachable = False  # set once stats.nba.com times out, so later calls fail instantly
+
+
+def nba_call(fn, what: str):
+    """Run one nba_api request, failing fast when stats.nba.com is unreachable.
+
+    Network failures (timeout / connection refused) get NBA_TRIES short attempts, then raise
+    NBAUnreachableError, and every later nba_call in this process raises immediately instead of
+    waiting out its own timeouts. Other errors (bad JSON, HTTP 5xx) are retried the same way and
+    then raised as RuntimeError. Pass timeout=NBA_TIMEOUT to the endpoint inside `fn`.
+    """
+    global _nba_unreachable
+    if _nba_unreachable:
+        raise NBAUnreachableError(f"{what}: skipped - stats.nba.com already unreachable in this run")
+    for attempt in range(1, NBA_TRIES + 1):
+        try:
+            return fn()
+        except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
+            if attempt == NBA_TRIES:
+                _nba_unreachable = True
+                raise NBAUnreachableError(
+                    f"stats.nba.com unreachable ({what}: {type(e).__name__} on {NBA_TRIES} attempts x "
+                    f"{NBA_TIMEOUT}s). NBA.com blocks cloud/data-center IPs (e.g. GitHub Actions); "
+                    f"run from a home network.") from e
+            print(f"    ! {what}: {type(e).__name__} - retry in 5s")
+        except Exception as e:  # noqa: BLE001 - e.g. JSONDecodeError on a throttled response
+            if attempt == NBA_TRIES:
+                raise RuntimeError(f"{what} failed after {NBA_TRIES} tries: {e}") from e
+            print(f"    ! {what}: {type(e).__name__}: {str(e)[:80]} - retry in 5s")
+        time.sleep(5)
+
+
 def _bbref_tables(url: str, **read_html_kwargs) -> list[pd.DataFrame]:
     def go():
         r = requests.get(url, headers=HEADERS, timeout=30)
@@ -146,12 +185,12 @@ def fetch_nba_base(season_id: int, refresh: bool) -> pd.DataFrame:
         return fetch_bbref_pergame(season_id, refresh)
 
     def fetch():
-        df = _retry(
+        df = nba_call(
             lambda: leaguedashplayerstats.LeagueDashPlayerStats(
                 season=season_label(season_id),
                 per_mode_detailed="PerGame",
                 measure_type_detailed_defense="Base",
-                timeout=60,
+                timeout=NBA_TIMEOUT,
             ).get_data_frames()[0],
             f"nba_api base {season_id}",
         )
@@ -164,9 +203,9 @@ def fetch_nba_base(season_id: int, refresh: bool) -> pd.DataFrame:
 
 def fetch_standings(season_id: int, refresh: bool) -> pd.DataFrame:
     def fetch():
-        df = _retry(
+        df = nba_call(
             lambda: leaguestandingsv3.LeagueStandingsV3(
-                season=season_label(season_id), timeout=60
+                season=season_label(season_id), timeout=NBA_TIMEOUT
             ).get_data_frames()[0],
             f"nba_api standings {season_id}",
         )
@@ -301,6 +340,8 @@ def build_dataset(start: int, end: int, refresh: bool = False) -> pd.DataFrame:
         print(f"[{sid}] {season_label(sid)} ...", flush=True)
         try:
             frames.append(build_season(sid, refresh))
+        except NBAUnreachableError:
+            raise  # no point trying the remaining seasons
         except Exception as e:  # noqa: BLE001
             print(f"  !! skipped {sid}: {e}")
     if not frames:

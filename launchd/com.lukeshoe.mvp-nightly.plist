@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Nightly MVP update. Install: copy to ~/Library/LaunchAgents/ and `launchctl bootstrap` it. -->
+    <key>Label</key>
+    <string>com.lukeshoe.mvp-nightly</string>
+
+    <!-- caffeinate -i keeps the Mac from idle-sleeping until the run finishes -->
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/bin/caffeinate</string>
+        <string>-i</string>
+        <string>/bin/bash</string>
+        <string>/Users/lukeshoe/Sports-Data-Analytics-Project/run_nightly.sh</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/lukeshoe/Sports-Data-Analytics-Project</string>
+
+    <!-- Every day at 3:00 AM local time. If the Mac is asleep then, launchd runs it on wake. -->
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>3</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+
+    <key>RunAtLoad</key>
+    <false/>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/usr/bin:/bin:/usr/sbin:/sbin</string>
+    </dict>
+
+    <!-- Only catches output from outside run_nightly.sh (e.g. bash itself failing to start);
+         the run's own output is in logs/nightly_YYYY-MM-DD.log -->
+    <key>StandardOutPath</key>
+    <string>/Users/lukeshoe/Sports-Data-Analytics-Project/logs/launchd.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/lukeshoe/Sports-Data-Analytics-Project/logs/launchd.log</string>
+</dict>
+</plist>
