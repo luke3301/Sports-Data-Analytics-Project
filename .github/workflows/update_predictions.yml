@@ -1,0 +1,40 @@
+name: Update MVP predictions
+
+on:
+  schedule:
+    - cron: "0 8 * * *"   # 08:00 UTC daily = 3:00 AM EST (4:00 AM during daylight saving time)
+  workflow_dispatch:        # "Run workflow" button in the Actions tab
+
+concurrency:
+  group: update-predictions   # never run two updates at once
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Install headless Chromium
+        # --with-deps also installs the Linux system libraries Chromium needs on a fresh runner
+        run: python -m playwright install --with-deps chromium
+
+      - name: Download live DARKO DPM
+        run: python download_darko.py
+
+      - name: Run models and save to TiDB
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: python compare_models.py --save-db
