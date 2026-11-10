@@ -9,13 +9,16 @@ Usage:
     python compare_models.py --min-games 10        # override the games-played threshold
     python compare_models.py --legacy-darko-merge  # DPM merged the way Model 2's training data was
     python compare_models.py --save-db             # also store today's snapshot in daily_predictions (TiDB)
+
+DARKO: the current season reads data/raw/darko_live.csv (refresh it with `python download_darko.py`);
+past seasons read data/raw/darko_<season>.csv. --darko-file overrides either.
 """
 from __future__ import annotations
 
 import argparse
 import re
 import time
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
 import joblib
@@ -29,6 +32,9 @@ from model_trainer import MODEL_DIR, prepare_features
 
 ONOFF_TOP_N = 25     # Model 2 pulled on/off only for the top 25 by VORP per season
 ONOFF_SLEEP = 2.0
+CURRENT_SEASON = 2027                          # 2026-27, the season darko_live.csv covers
+LIVE_DARKO = dp.RAW_DIR / "darko_live.csv"     # written by download_darko.py
+STALE_DAYS = 2
 
 
 # --------------------------------------------------------------------------- season data
@@ -38,11 +44,29 @@ def load_season(season_id: int, refresh: bool) -> pd.DataFrame:
     return prepare_features(dp.build_dataset(season_id, season_id, refresh=refresh))
 
 
-def add_darko(df: pd.DataFrame, season_id: int, legacy: bool) -> pd.DataFrame:
-    path = dp.RAW_DIR / f"darko_{season_id}.csv"
+def darko_path(season_id: int, override: str | None = None) -> Path:
+    """Live file for the current season, archived darko_<season>.csv otherwise."""
+    if override:
+        path = Path(override)
+    elif season_id == CURRENT_SEASON:
+        path = LIVE_DARKO
+        if not path.exists():
+            raise FileNotFoundError(f"{path} not found - run `python download_darko.py` "
+                                    f"(or pass --darko-file data/raw/darko_{season_id}.csv)")
+    else:
+        path = dp.RAW_DIR / f"darko_{season_id}.csv"
     if not path.exists():
-        raise FileNotFoundError(f"{path} not found - download the current DARKO table and save it there")
-    darko = pd.read_csv(path)
+        raise FileNotFoundError(f"{path} not found")
+    age = datetime.now() - datetime.fromtimestamp(path.stat().st_mtime)
+    print(f"DARKO file: {path.name} (updated {age.days}d {age.seconds // 3600}h ago)")
+    if path == LIVE_DARKO and age.days >= STALE_DAYS:
+        print(f"  ! {path.name} is {age.days} days old - run `python download_darko.py` for current DPM")
+    return path
+
+
+def add_darko(df: pd.DataFrame, season_id: int, legacy: bool, darko_file: str | None = None) -> pd.DataFrame:
+    path = darko_path(season_id, darko_file)
+    darko = pd.read_csv(path, encoding="utf-8-sig")
     darko["DPM"] = pd.to_numeric(darko["DPM"].astype(str).str.replace("+", "", regex=False), errors="coerce")
 
     if legacy:
@@ -144,20 +168,22 @@ def score_dominance(pool: pd.DataFrame) -> pd.DataFrame:
 # --------------------------------------------------------------------------- main
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--season", type=int, default=2027, help="season end year (2027 = 2026-27)")
+    ap.add_argument("--season", type=int, default=CURRENT_SEASON, help="season end year (2027 = 2026-27)")
     ap.add_argument("--top", type=int, default=10)
     ap.add_argument("--no-refresh", action="store_true", help="use cached data instead of re-pulling")
     ap.add_argument("--min-games", type=float, default=None, help="override games-played threshold")
     ap.add_argument("--min-mpg", type=float, default=dp.MIN_MPG)
     ap.add_argument("--legacy-darko-merge", action="store_true",
                     help="merge DPM by the notebook's name key (reproduces Model 2's training data)")
+    ap.add_argument("--darko-file", default=None,
+                    help="DARKO CSV to use instead of darko_live.csv / darko_<season>.csv")
     ap.add_argument("--save-db", action="store_true",
                     help="write every eligible player's scores to the daily_predictions table (DATABASE_URL in .env)")
     a = ap.parse_args()
     refresh = not a.no_refresh
 
     df = load_season(a.season, refresh)
-    df = add_darko(df, a.season, a.legacy_darko_merge)
+    df = add_darko(df, a.season, a.legacy_darko_merge, a.darko_file)
     df = add_on_off(df, a.season, refresh)
 
     games_so_far = int(df["SEASON_GAMES"].iloc[0])
