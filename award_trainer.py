@@ -194,12 +194,21 @@ def load_roy() -> pd.DataFrame:
     df = adv[adv["is_rookie"] & adv["season_id"].isin(roy["season_id"].unique())]
     df = df.merge(roy, on=["season_id", "bbref_id"], how="left")
     df["share"] = df["share"].fillna(0.0)
+    df = add_roy_features(df)
+    df = df[df["in_eval_pool"] | (df["share"] > 0)]
+    return df.rename(columns={"bbref_id": "player_id"}).reset_index(drop=True)
+
+
+def add_roy_features(df: pd.DataFrame) -> pd.DataFrame:
+    """Derived ROY features + candidate pool. Shared by training and live inference (award_inference.py),
+    so a mid-season prediction sees features built exactly as in training. season_games is the schedule
+    length - or, mid-season, the most games any team has played so far."""
+    df = df.copy()
     df["gp_pct"] = df["games"] / df["season_games"]
     df["draft_pick_capped"] = df["draft_pick"].clip(upper=UNDRAFTED_PICK).fillna(UNDRAFTED_PICK)
     df["in_eval_pool"] = ((df["mp"] * 82 / df["season_games"] >= ROY_MIN_MINUTES_82)
                           & (df["gp_pct"] >= ROY_MIN_GAMES_FRACTION))
-    df = df[df["in_eval_pool"] | (df["share"] > 0)]
-    return df.rename(columns={"bbref_id": "player_id"}).reset_index(drop=True)
+    return df
 
 
 ROY_TRADITIONAL = ["pts_per_g", "mp_per_g", "gp_pct", "draft_pick_capped"]
@@ -236,14 +245,23 @@ def load_dpoy() -> pd.DataFrame:
     df = adv[adv["season_id"].isin(dpoy["season_id"].unique())]
     df = df.merge(dpoy, on=["season_id", "bbref_id"], how="left")
     df["share"] = df["share"].fillna(0.0)
+    df = add_dpoy_features(df)
+    df = df[df["in_eval_pool"] | (df["share"] > 0)]
+    return df.rename(columns={"bbref_id": "player_id"}).reset_index(drop=True)
+
+
+def add_dpoy_features(df: pd.DataFrame) -> pd.DataFrame:
+    """Derived DPOY features + candidate pool, shared by training and live inference. The games rule is
+    62 of 82 games scaled to season_games (= 62 for a completed season; proportional mid-season)."""
+    df = df.copy()
     df["gp_pct"] = df["games"] / df["season_games"]
     df["dws_82"] = df["dws"] * 82 / df["season_games"]
     df[["is_center", "top5_team_defense"]] = df[["is_center", "top5_team_defense"]].astype(float)
     enough_games = np.where(df["season_id"] >= DPOY_GAMES_RULE_FROM,
-                            df["games"] >= DPOY_GAMES_RULE_MIN, df["gp_pct"] >= DPOY_MIN_GAMES_FRACTION)
+                            df["games"] >= DPOY_GAMES_RULE_MIN / 82 * df["season_games"],
+                            df["gp_pct"] >= DPOY_MIN_GAMES_FRACTION)
     df["in_eval_pool"] = enough_games & (df["mp_per_g"] >= DPOY_MIN_MPG)
-    df = df[df["in_eval_pool"] | (df["share"] > 0)]
-    return df.rename(columns={"bbref_id": "player_id"}).reset_index(drop=True)
+    return df
 
 
 DPOY_FEATURES = ["dws_82", "dbpm", "drb_pct", "stl_pct", "blk_pct", "team_drtg_rel"]  # v1 (mixed)

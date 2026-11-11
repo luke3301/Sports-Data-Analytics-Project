@@ -8,7 +8,8 @@ Usage:
     python compare_models.py --no-refresh          # reuse today's cached pull
     python compare_models.py --min-games 10        # override the games-played threshold
     python compare_models.py --legacy-darko-merge  # DPM merged the way Model 2's training data was
-    python compare_models.py --save-db             # also store today's snapshot in daily_predictions (TiDB)
+    python compare_models.py --save-db             # also store today's MVP, ROY and DPOY snapshots (TiDB)
+    python compare_models.py --skip-awards         # MVP only (no ROY/DPOY)
 
 DARKO: the current season reads data/raw/darko_live.csv (refresh it with `python download_darko.py`);
 past seasons read data/raw/darko_<season>.csv. --darko-file overrides either.
@@ -39,12 +40,6 @@ STALE_DAYS = 2
 # ranking, so it changes who is ranked, never a player's model scores or the model weights.
 MVP_MIN_PTS = 15.0
 MVP_MIN_MPG = 28.0
-# Rookie of the Year race: rookies play smaller roles, so a lower baseline. The MVP models' Model 2
-# share is ~0 (and tied) for nearly every rookie, so the ROY race is ranked by Model 1's score.
-ROY_MIN_PTS = 10.0
-ROY_MIN_MPG = 20.0
-ROY_MIN_GAMES_FRACTION = 0.5   # of the most games any team has played: a sample-size guard only.
-                               # The ROY race doesn't use the MVP pool's 65/82-games gate.
 
 
 # --------------------------------------------------------------------------- season data
@@ -187,10 +182,8 @@ def main():
     ap.add_argument("--min-mpg", type=float, default=dp.MIN_MPG)
     ap.add_argument("--mvp-min-pts", type=float, default=MVP_MIN_PTS,
                     help="MVP baseline: minimum points per game to be ranked (default %(default)s)")
-    ap.add_argument("--roy-min-pts", type=float, default=ROY_MIN_PTS,
-                    help="ROY baseline: minimum points per game for rookies (default %(default)s)")
-    ap.add_argument("--roy-min-mpg", type=float, default=ROY_MIN_MPG,
-                    help="ROY baseline: minimum minutes per game for rookies (default %(default)s)")
+    ap.add_argument("--skip-awards", action="store_true",
+                    help="MVP only: skip the ROY and DPOY predictions (award_inference.py)")
     ap.add_argument("--mvp-min-mpg", type=float, default=MVP_MIN_MPG,
                     help="MVP baseline: minimum minutes per game to be ranked (default %(default)s)")
     ap.add_argument("--legacy-darko-merge", action="store_true",
@@ -215,14 +208,6 @@ def main():
 
     pool = score_dominance(score_model2(score_model1(pool)))
 
-    # ROY race: every rookie with advanced stats, its own baseline and games guard (not the MVP pool's
-    # eligibility), scored by the same models
-    roy_min_games = ROY_MIN_GAMES_FRACTION * games_so_far
-    roy = df[df["IS_ROOKIE"] & df["HAS_ADV"] & (df["GP"] >= roy_min_games)
-             & (df["PTS"] >= a.roy_min_pts) & (df["MPG"] >= a.roy_min_mpg)].copy()
-    roy = score_dominance(score_model2(score_model1(roy))) if len(roy) else roy.assign(M1_INDEX=[])
-    roy["ROY_RANK"] = roy["M1_INDEX"].rank(ascending=False, method="first").astype(int)
-    roy = roy.sort_values("ROY_RANK")
 
     # MVP baseline filter: drop low-usage players whose early-season impact metrics run hot
     baseline = (pool["PTS"] >= a.mvp_min_pts) & (pool["MPG"] >= a.mvp_min_mpg)
@@ -275,21 +260,36 @@ def main():
     print("\nInputs for every player in either top list:")
     print(top.sort_values("M2_RANK")[cols + ["MVP_INDEX", "M1_RANK", "M2_RANK"]].round(3).to_string(index=False))
 
-    print(f"\nRookie of the Year race ({int(df['IS_ROOKIE'].sum())} rookies; >= {a.roy_min_pts:g} PTS, "
-          f">= {a.roy_min_mpg:g} MPG, >= {roy_min_games:.1f} GP -> {len(roy)} ranked):")
-    if len(roy):
-        print(roy.head(a.top)[["ROY_RANK", "PLAYER", "TEAM", "GP", "PTS", "MPG", "TS_PCT", "BPM", "M1_INDEX", "MVP_INDEX"]]
-              .round(3).to_string(index=False))
+    # ROY and DPOY: trained award models (award_inference.py). Isolated so a failure here never blocks
+    # the MVP update; it is reported and makes the run exit non-zero at the end.
+    awards, award_error = None, None
+    if not a.skip_awards:
+        try:
+            from award_inference import print_races, run_award_predictions
+            awards = run_award_predictions(a.season, refresh=refresh)
+            print_races(awards, top=a.top)
+        except Exception as e:  # noqa: BLE001
+            award_error = f"{type(e).__name__}: {e}"
+            print(f"\n!! ROY/DPOY predictions failed: {award_error}")
 
     if a.save_db:
-        from db_sync import get_engine, write_daily_predictions, write_daily_roy  # only imported with --save-db
+        from db_sync import get_engine, write_daily_dpoy, write_daily_predictions, write_daily_roy  # --save-db only
 
         engine = get_engine()
         n_saved = write_daily_predictions(engine, pool, season_id=a.season)
         print(f"\nSaved {n_saved} live players for {dp.season_label(a.season)} ({date.today()}) "
               f"to daily_predictions on {engine.url.host or engine.url.database}")
-        n_roy = write_daily_roy(engine, roy, season_id=a.season)
-        print(f"Saved {n_roy} rookies to daily_roy_predictions")
+        if awards is not None:
+            try:
+                n_roy = write_daily_roy(engine, awards["roy"], season_id=a.season)
+                n_dpoy = write_daily_dpoy(engine, awards["dpoy"], season_id=a.season)
+                print(f"Saved {n_roy} rookies to daily_roy_predictions and {n_dpoy} candidates to daily_dpoy_predictions")
+            except Exception as e:  # noqa: BLE001
+                award_error = f"saving ROY/DPOY failed: {type(e).__name__}: {e}"
+                print(f"!! {award_error}")
+
+    if award_error:
+        raise SystemExit(f"\nERROR (MVP results were still produced{' and saved' if a.save_db else ''}): {award_error}")
 
 
 if __name__ == "__main__":
