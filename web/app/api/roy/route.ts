@@ -2,13 +2,14 @@ import type { NextRequest } from "next/server";
 import { queryRoy } from "@/lib/roy";
 
 // Runs at request time (reads request.nextUrl). Every row in daily_roy_predictions is a rookie.
+// Rows carry both models: Model 1 = Traditional Voter, Model 2 = Combined Impact.
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 /**
  * GET /api/roy             -> latest day's Rookie of the Year race (rookies only)
  * GET /api/roy?date=YYYY-MM-DD
- * GET /api/roy?limit=10    -> top N by ROY rank
+ * GET /api/roy?limit=10    -> top N by Model 1 (Traditional Voter) rank
  */
 export async function GET(request: NextRequest) {
   const params = request.nextUrl.searchParams;
