@@ -6,11 +6,13 @@
     <key>Label</key>
     <string>com.lukeshoe.mvp-nightly</string>
 
-    <!-- caffeinate -i keeps the Mac from idle-sleeping until the run finishes -->
+    <!-- caffeinate -i blocks idle sleep; -s also blocks system sleep while on AC power
+         (pair with `sudo pmset repeat wake MTWRFSU 02:55:00` so a closed, plugged-in Mac is awake) -->
     <key>ProgramArguments</key>
     <array>
         <string>/usr/bin/caffeinate</string>
         <string>-i</string>
+        <string>-s</string>
         <string>/bin/bash</string>
         <string>/Users/lukeshoe/Sports-Data-Analytics-Project/run_nightly.sh</string>
     </array>
