@@ -13,6 +13,12 @@ Outputs (data/processed/awards/):
                                 is_rookie, nba_player_id
   rookies.parquet               bbref's official rookie list per season, cross-checked with NBA.com (1997+)
   player_crosswalk.parquet      bbref_id <-> nba_api PLAYER_ID (players with 1996-97+ seasons)
+  drafts.parquet                every draft 1976+: bbref_id, draft year, overall pick
+  team_ratings.parquet          team-season offense/defense/net ratings (raw, league-relative, rank)
+
+advanced_full also carries the context columns the award models need: draft_year, draft_pick,
+undrafted (ROY) and the player's team's win %, defensive rating, league-relative defensive rating
+and defensive rank (DPOY). Traded players get their last team's ratings.
 
 Usage:
     python awards_data.py                    # build everything (fetches only pages not cached yet)
@@ -38,7 +44,11 @@ PAGES = {
     "awards": BBREF + "/awards/awards_{season}.html",
     "advanced": BBREF + "/leagues/NBA_{season}_advanced.html",
     "rookies": BBREF + "/leagues/NBA_{season}_rookies.html",
+    "draft": BBREF + "/draft/NBA_{season}.html",            # {season} = draft year
+    "ratings": BBREF + "/leagues/NBA_{season}_ratings.html",
+    "league": BBREF + "/leagues/NBA_{season}.html",          # fallback team ratings (see parse_ratings)
 }
+FIRST_DRAFT = 1976  # Larry Bird (1979-80 rookie) was drafted in 1978; 1976 covers every 1980+ rookie
 HTML_DIR = dp.RAW_DIR / "html" / "bbref"
 OUT_DIR = dp.PROC_DIR / "awards"
 
@@ -100,8 +110,14 @@ def all_tables(html: str) -> dict[str, BeautifulSoup]:
     return tables
 
 
-def table_rows(table) -> list[dict]:
-    """Body rows as {data-stat: text}; the player cell also yields 'bbref_id'. Repeated header rows skipped."""
+PLAYER_HREF = re.compile(r"/players/[a-z]/([a-z0-9]+)\.html")
+TEAM_HREF = re.compile(r"/teams/([A-Z0-9]{3})/\d{4}\.html")
+
+
+def table_rows(table, key: str = "bbref_id") -> list[dict]:
+    """Body rows as {data-stat: text}. Player cells also yield 'bbref_id' (from data-append-csv or the
+    player link) and team cells 'team_abbr' (from the team-season link). Rows without `key` and
+    repeated header rows are skipped."""
     out = []
     for tr in table.find("tbody").find_all("tr"):
         if "thead" in (tr.get("class") or []):
@@ -114,7 +130,13 @@ def table_rows(table) -> list[dict]:
             row[stat] = cell.get_text(strip=True)
             if cell.get("data-append-csv"):
                 row["bbref_id"] = cell["data-append-csv"]
-        if row.get("bbref_id"):
+            link = cell.find("a")
+            if link and link.get("href"):
+                if (m := PLAYER_HREF.search(link["href"])) and "bbref_id" not in row:
+                    row["bbref_id"] = m.group(1)
+                elif m := TEAM_HREF.search(link["href"]):
+                    row["team_abbr"] = m.group(1)
+        if row.get(key):
             out.append(row)
     return out
 
@@ -185,6 +207,50 @@ def parse_rookies(season: int, html: str) -> pd.DataFrame:
     return df
 
 
+def parse_draft(draft_year: int, html: str) -> pd.DataFrame:
+    df = pd.DataFrame(table_rows(all_tables(html)["stats"]))
+    return pd.DataFrame({
+        "bbref_id": df["bbref_id"],
+        "player": df["player"],
+        "draft_year": draft_year,
+        "draft_pick": _num(df["pick_overall"]),
+        "draft_team": df["team_id"],
+    })
+
+
+def parse_ratings(season: int, html: str) -> pd.DataFrame:
+    df = pd.DataFrame(table_rows(all_tables(html)["ratings"], key="team_abbr"))
+    out = pd.DataFrame({
+        "season_id": season,
+        "team": df["team_abbr"],
+        "team_name": df["team_name"],
+        "team_wins": _num(df["wins"]),
+        "team_losses": _num(df["losses"]),
+        "team_win_pct": _num(df["win_loss_pct"]),
+        "team_ortg": _num(df["off_rtg"]),
+        "team_drtg": _num(df["def_rtg"]),
+        "team_nrtg": _num(df["net_rtg"]),
+    })
+    return out
+
+
+def fill_ratings_from_league(ratings: pd.DataFrame, html: str) -> pd.DataFrame:
+    """The ratings page leaves ORtg/DRtg blank for 1980-83; the league page's team advanced table has them."""
+    adv = pd.DataFrame(table_rows(all_tables(html)["advanced-team"], key="team_abbr"))
+    adv = adv.set_index("team_abbr")
+    out = ratings.copy()
+    for col, src in (("team_ortg", "off_rtg"), ("team_drtg", "def_rtg"), ("team_nrtg", "net_rtg")):
+        out[col] = out[col].fillna(out["team"].map(_num(adv[src])))
+    return out
+
+
+def add_relative_ratings(out: pd.DataFrame) -> pd.DataFrame:
+    # League-relative: defense is "points allowed per 100", so lower is better; negative = better than average
+    out["team_drtg_rel"] = out["team_drtg"] - out["team_drtg"].mean()
+    out["team_drtg_rank"] = out["team_drtg"].rank(method="min").astype("Int64")  # 1 = best defense; <NA> if unrated
+    return out
+
+
 # --------------------------------------------------------------------------- NBA.com cross-references
 def nba_rookie_ids(season: int, refresh: bool = False) -> set[str]:
     """NBA.com's own rookie list (1996-97+); same cache file/format as the ROY branch's fetch_rookie_ids."""
@@ -247,7 +313,11 @@ def build_crosswalk(adv: pd.DataFrame) -> pd.DataFrame:
 
 # --------------------------------------------------------------------------- build
 def build(start: int, end: int, refresh: bool = False):
-    votes, adv, rookies = [], [], []
+    votes, adv, rookies, drafts, ratings = [], [], [], [], []
+    for year in range(min(start, FIRST_DRAFT), end + 1):  # drafts start earlier than seasons
+        html = fetch_html("draft", year, refresh)
+        if html:
+            drafts.append(parse_draft(year, html))
     for season in range(start, end + 1):
         print(f"[{season}] {dp.season_label(season)}", flush=True)
         html = fetch_html("awards", season, refresh)
@@ -259,10 +329,25 @@ def build(start: int, end: int, refresh: bool = False):
         html = fetch_html("rookies", season, refresh)
         if html:
             rookies.append(parse_rookies(season, html))
+        html = fetch_html("ratings", season, refresh)
+        if html:
+            r = parse_ratings(season, html)
+            if r["team_drtg"].isna().any():
+                r = fill_ratings_from_league(r, fetch_html("league", season, refresh))
+            ratings.append(add_relative_ratings(r))
 
     votes = pd.concat(votes, ignore_index=True)
     adv = pd.concat(adv, ignore_index=True)
     rookies = pd.concat(rookies, ignore_index=True)
+    drafts = pd.concat(drafts, ignore_index=True)
+    ratings = pd.concat(ratings, ignore_index=True)
+
+    # Draft context: a player's most recent draft (a few re-entered the draft)
+    last_draft = drafts.sort_values("draft_year").drop_duplicates("bbref_id", keep="last")
+    adv = adv.merge(last_draft[["bbref_id", "draft_year", "draft_pick"]], on="bbref_id", how="left")
+    adv["undrafted"] = adv["draft_pick"].isna()
+    # Team context (traded players: their last team)
+    adv = adv.merge(ratings.drop(columns=["team_name"]), on=["season_id", "team"], how="left")
 
     xwalk = build_crosswalk(adv)
     to_nba = xwalk.set_index("bbref_id")["nba_player_id"]
@@ -284,6 +369,8 @@ def build(start: int, end: int, refresh: bool = False):
     adv.to_parquet(OUT_DIR / "advanced_full.parquet", index=False)
     rookies.to_parquet(OUT_DIR / "rookies.parquet", index=False)
     xwalk.to_parquet(OUT_DIR / "player_crosswalk.parquet", index=False)
+    drafts.to_parquet(OUT_DIR / "drafts.parquet", index=False)
+    ratings.to_parquet(OUT_DIR / "team_ratings.parquet", index=False)
     return votes, adv, rookies, xwalk, nba_lists
 
 

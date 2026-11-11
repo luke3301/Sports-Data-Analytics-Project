@@ -1,0 +1,2 @@
+lam,depth,n_est,w_linear,seasons,winner_acc,winner_in_top3,top5_overlap,voter_spearman
+0.03,3,300,0.25,47,0.7659574468085106,0.9574468085106383,0.7617021276595742,0.7951928539554448

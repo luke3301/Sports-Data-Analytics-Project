@@ -33,6 +33,13 @@ KNOWN_WINNERS = {
     ("MVP", 2023): {"embiijo01"}, ("MVP", 2024): {"jokicni01"},
 }
 DEFENSIVE = ["dws", "dbpm", "stl_pct", "blk_pct", "drb_pct"]
+# Draft spot checks: bbref_id -> overall pick (None = undrafted)
+KNOWN_PICKS = {"birdla01": 6, "duncati01": 1, "jamesle01": 1, "jokicni01": 41, "brogdma01": 36,
+               "wembavi01": 1, "wallabe01": None}
+# Teams per season (expansion: 23 in 1981, 25 in 1989, 27 in 1990, 29 in 1996, 30 in 2005)
+def expected_teams(season: int) -> int:
+    return 22 if season == 1980 else 23 if season <= 1988 else 25 if season == 1989 else \
+        27 if season <= 1995 else 29 if season <= 2004 else 30
 
 failures: list[str] = []
 
@@ -126,6 +133,29 @@ def main():
     for col in DEFENSIVE:
         cov = eligible[col].notna().mean()
         check(cov >= 0.99, f"{col}: {cov:.1%} of 500+ minute player-seasons")
+
+    print("10. Draft context (ROY)")
+    first = adv.drop_duplicates("bbref_id").set_index("bbref_id")
+    wrong = {b: (pick, first.at[b, "draft_pick"] if b in first.index else "missing")
+             for b, pick in KNOWN_PICKS.items()
+             if b not in first.index or not ((pd.isna(first.at[b, "draft_pick"]) and pick is None)
+                                             or first.at[b, "draft_pick"] == pick)}
+    check(not wrong, f"{len(KNOWN_PICKS)} known draft picks (incl. undrafted Ben Wallace)", str(wrong) if wrong else "")
+    roy_adv = roy.merge(adv[["season_id", "bbref_id", "draft_pick", "draft_year"]], on=["season_id", "bbref_id"])
+    drafted = roy_adv["draft_pick"].notna().mean()
+    early = roy_adv[roy_adv["draft_year"] > roy_adv["season_id"] - 1]
+    check(drafted >= 0.95 and early.empty, f"{drafted:.1%} of ROY vote-getters have a draft pick; none drafted after their rookie season",
+          f"undrafted: {roy_adv[roy_adv.draft_pick.isna()][['season_id', 'player']].values.tolist()}")
+
+    print("11. Team context (DPOY)")
+    ratings = pd.read_parquet(OUT_DIR / "team_ratings.parquet")
+    n = ratings.groupby("season_id").size()
+    bad = {s: (int(n.get(s, 0)), expected_teams(s)) for s in sorted(adv["season_id"].unique()) if n.get(s, 0) != expected_teams(s)}
+    check(not bad, f"team ratings for {len(n)} seasons with the right number of teams", str(bad) if bad else "")
+    cov = eligible[["team_drtg", "team_drtg_rel", "team_win_pct"]].notna().all(axis=1).mean()
+    check(cov >= 0.999, f"{cov:.1%} of 500+ minute player-seasons joined to their team's ratings")
+    best_d = ratings.loc[ratings.groupby("season_id")["team_drtg_rank"].idxmin()]
+    print(f"       best defense, recent seasons: {best_d[best_d.season_id >= 2022][['season_id', 'team', 'team_drtg']].values.tolist()}")
 
     print("\nAward winners by season (ROY, DPOY):")
     table = (w[w.award.isin(["ROY", "DPOY"])].groupby(["season_id", "award"])["player"]

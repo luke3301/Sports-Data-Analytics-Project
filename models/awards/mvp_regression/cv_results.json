@@ -1,0 +1,91 @@
+{
+  "award": "MVP",
+  "config": {
+    "lam": 0.03,
+    "depth": 3,
+    "n_est": 300,
+    "w_linear": 0.25
+  },
+  "loso": {
+    "LINEAR": {
+      "seasons": 47,
+      "winner_acc": 0.6808510638297872,
+      "winner_in_top3": 0.9574468085106383,
+      "top5_overlap": 0.7446808510638296,
+      "voter_spearman": 0.781043622625433
+    },
+    "XGB": {
+      "seasons": 47,
+      "winner_acc": 0.723404255319149,
+      "winner_in_top3": 0.9574468085106383,
+      "top5_overlap": 0.7617021276595742,
+      "voter_spearman": 0.7976454035008159
+    },
+    "BLEND": {
+      "seasons": 47,
+      "winner_acc": 0.7659574468085106,
+      "winner_in_top3": 0.9574468085106383,
+      "top5_overlap": 0.7617021276595742,
+      "voter_spearman": 0.7951928539554448
+    }
+  },
+  "misses": [
+    [
+      1993,
+      "Charles Barkley",
+      "Michael Jordan"
+    ],
+    [
+      1994,
+      "Hakeem Olajuwon",
+      "David Robinson"
+    ],
+    [
+      1997,
+      "Karl Malone",
+      "Michael Jordan"
+    ],
+    [
+      1999,
+      "Karl Malone",
+      "Shaquille O'Neal"
+    ],
+    [
+      2001,
+      "Allen Iverson",
+      "Shaquille O'Neal"
+    ],
+    [
+      2005,
+      "Steve Nash",
+      "Dirk Nowitzki"
+    ],
+    [
+      2006,
+      "Steve Nash",
+      "LeBron James"
+    ],
+    [
+      2008,
+      "Kobe Bryant",
+      "LeBron James"
+    ],
+    [
+      2011,
+      "Derrick Rose",
+      "LeBron James"
+    ],
+    [
+      2022,
+      "Nikola Joki\u0107",
+      "Giannis Antetokounmpo"
+    ],
+    [
+      2023,
+      "Joel Embiid",
+      "Nikola Joki\u0107"
+    ]
+  ],
+  "n_rows": 8709,
+  "n_seasons": 47
+}
