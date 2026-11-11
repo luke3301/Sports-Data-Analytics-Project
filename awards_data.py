@@ -21,8 +21,9 @@ advanced_full also carries the context columns the award models need:
   DPOY   team_win_pct, team_drtg (+ league-relative, rank), top5_team_defense, is_center
   all    prev_<award>_share: the player's vote share for each award the previous season
          (reputation; known before the season starts, so not a leak)
-  2014+  darko_ddpm: DARKO's defensive DPM (data/raw/darko_<season>.csv, matched by accent-folded
-         name plus the alias map in rebuild_model2.py; DARKO's historical files have no player IDs)
+  2014+  darko_dpm / darko_odpm / darko_ddpm: DARKO's overall, offensive and defensive DPM
+         (data/raw/darko_<season>.csv, matched by accent-folded name plus the alias map in
+         rebuild_model2.py; DARKO's historical files have no player IDs)
 Traded players get their last team's ratings.
 
 Usage:
@@ -299,11 +300,15 @@ def add_prev_season_shares(adv: pd.DataFrame, votes: pd.DataFrame) -> pd.DataFra
     return out
 
 
-def add_darko_ddpm(adv: pd.DataFrame) -> pd.DataFrame:
-    """DARKO defensive DPM for seasons that have a data/raw/darko_<season>.csv (2014+)."""
+DARKO_COLUMNS = {"DPM": "darko_dpm", "ODPM": "darko_odpm", "DDPM": "darko_ddpm"}
+
+
+def add_darko(adv: pd.DataFrame) -> pd.DataFrame:
+    """DARKO overall/offensive/defensive DPM for seasons with a data/raw/darko_<season>.csv (2014+)."""
     from rebuild_model2 import NAME_ALIASES  # nicknames DARKO lists differently (Enes Freedom -> Kanter, ...)
     adv = adv.copy()
-    adv["darko_ddpm"] = float("nan")
+    for col in DARKO_COLUMNS.values():
+        adv[col] = float("nan")
     for season in sorted(adv["season_id"].unique()):
         path = dp.RAW_DIR / f"darko_{season}.csv"
         if season < DARKO_FIRST_SEASON or not path.exists():
@@ -313,7 +318,8 @@ def add_darko_ddpm(adv: pd.DataFrame) -> pd.DataFrame:
         d = d[~d["key"].duplicated(keep=False)].set_index("key")  # ambiguous names left unmatched
         rows = adv["season_id"] == season
         keys = adv.loc[rows, "player"].map(name_key).replace(NAME_ALIASES)
-        adv.loc[rows, "darko_ddpm"] = keys.map(pd.to_numeric(d["DDPM"], errors="coerce")).to_numpy()
+        for src, col in DARKO_COLUMNS.items():
+            adv.loc[rows, col] = keys.map(pd.to_numeric(d[src], errors="coerce")).to_numpy()
     return adv
 
 
@@ -409,7 +415,7 @@ def build(start: int, end: int, refresh: bool = False):
     adv["is_center"] = adv["pos"] == "C"
     # Reputation and DARKO defense
     adv = add_prev_season_shares(adv, votes)
-    adv = add_darko_ddpm(adv)
+    adv = add_darko(adv)
 
     xwalk = build_crosswalk(adv)
     to_nba = xwalk.set_index("bbref_id")["nba_player_id"]

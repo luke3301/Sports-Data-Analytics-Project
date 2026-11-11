@@ -1,0 +1,61 @@
+{
+  "award": "ROY_Modern_DARKO",
+  "config": {
+    "lam": 0.03,
+    "depth": 2,
+    "n_est": 150,
+    "w_linear": 0.5
+  },
+  "loso": {
+    "LINEAR": {
+      "seasons": 13,
+      "winner_acc": 0.46153846153846156,
+      "winner_in_top3": 0.7692307692307693,
+      "top5_overlap": 0.5538461538461539,
+      "voter_spearman": 0.39191587209827844
+    },
+    "XGB": {
+      "seasons": 13,
+      "winner_acc": 0.46153846153846156,
+      "winner_in_top3": 0.6923076923076923,
+      "top5_overlap": 0.5692307692307691,
+      "voter_spearman": 0.42888930834947714
+    },
+    "BLEND": {
+      "seasons": 13,
+      "winner_acc": 0.6153846153846154,
+      "winner_in_top3": 0.7692307692307693,
+      "top5_overlap": 0.6153846153846153,
+      "voter_spearman": 0.4212391853070396
+    }
+  },
+  "misses": [
+    [
+      2015,
+      "Andrew Wiggins",
+      "Nikola Miroti\u0107"
+    ],
+    [
+      2016,
+      "Karl-Anthony Towns",
+      "Nikola Joki\u0107"
+    ],
+    [
+      2020,
+      "Ja Morant",
+      "Brandon Clarke"
+    ],
+    [
+      2023,
+      "Paolo Banchero",
+      "Walker Kessler"
+    ],
+    [
+      2025,
+      "Stephon Castle",
+      "Kel'el Ware"
+    ]
+  ],
+  "n_rows": 426,
+  "n_seasons": 13
+}

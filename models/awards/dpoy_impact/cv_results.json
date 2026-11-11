@@ -1,9 +1,9 @@
 {
   "award": "DPOY_Impact",
   "config": {
-    "lam": 0.03,
+    "lam": 0.003,
     "depth": 2,
-    "n_est": 300,
+    "n_est": 150,
     "w_linear": 0.75
   },
   "loso": {
@@ -12,21 +12,21 @@
       "winner_acc": 0.4318181818181818,
       "winner_in_top3": 0.6136363636363636,
       "top5_overlap": 0.5363636363636363,
-      "voter_spearman": 0.4761224658693379
+      "voter_spearman": 0.47470825113663956
     },
     "XGB": {
       "seasons": 44,
       "winner_acc": 0.38636363636363635,
-      "winner_in_top3": 0.6363636363636364,
-      "top5_overlap": 0.5227272727272728,
-      "voter_spearman": 0.48544045846558787
+      "winner_in_top3": 0.5909090909090909,
+      "top5_overlap": 0.5181818181818183,
+      "voter_spearman": 0.48245962523327285
     },
     "BLEND": {
       "seasons": 44,
       "winner_acc": 0.4090909090909091,
-      "winner_in_top3": 0.6363636363636364,
-      "top5_overlap": 0.5545454545454546,
-      "voter_spearman": 0.5002891836618741
+      "winner_in_top3": 0.5909090909090909,
+      "top5_overlap": 0.5636363636363637,
+      "voter_spearman": 0.4975069308162016
     }
   },
   "misses": [
@@ -38,7 +38,7 @@
     [
       1984,
       "Sidney Moncrief",
-      "Tree Rollins"
+      "Mark Eaton"
     ],
     [
       1986,
@@ -103,7 +103,7 @@
     [
       2004,
       "Metta World Peace",
-      "Kevin Garnett"
+      "Ben Wallace"
     ],
     [
       2005,
@@ -158,9 +158,9 @@
     [
       2025,
       "Evan Mobley",
-      "Victor Wembanyama"
+      "Shai Gilgeous-Alexander"
     ]
   ],
-  "n_rows": 8898,
+  "n_rows": 8693,
   "n_seasons": 44
 }

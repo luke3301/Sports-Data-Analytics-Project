@@ -9,6 +9,7 @@ SAME seasons as the baseline frame - so a 2014+ comparison judges full-history m
 Usage:
     python award_baselines.py roy
     python award_baselines.py dpoy
+    python award_baselines.py roy_modern      # 2014-2026 only, incl. the DARKO model
     python award_baselines.py dpoy_modern     # 2014-2026 only, incl. the DARKO model
 """
 from __future__ import annotations
@@ -23,6 +24,9 @@ from award_trainer import OUT_ROOT, SPECS, season_metrics
 BASELINES = {
     "roy": ("roy_traditional", [("Highest-scoring rookie wins", "pts_per_g")],
             ["roy_traditional", "roy_impact", "roy_combined"]),
+    "roy_modern": ("roy_modern_darko",
+                   [("Highest-scoring rookie wins", "pts_per_g"), ("Highest DARKO DPM wins", "darko_dpm")],
+                   ["roy_traditional", "roy_impact", "roy_combined", "roy_modern_darko"]),
     "dpoy": ("dpoy", [("Highest defensive win shares wins", "dws"), ("Most blocks per game wins", "blk_per_g")],
              ["dpoy", "dpoy_traditional", "dpoy_impact"]),
     "dpoy_modern": ("dpoy_modern_darko",

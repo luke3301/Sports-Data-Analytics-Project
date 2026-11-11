@@ -1,7 +1,7 @@
 {
   "award": "DPOY_Modern_DARKO",
   "config": {
-    "lam": 0.003,
+    "lam": 0.01,
     "depth": 3,
     "n_est": 300,
     "w_linear": 0.75
@@ -11,22 +11,22 @@
       "seasons": 13,
       "winner_acc": 0.46153846153846156,
       "winner_in_top3": 0.6923076923076923,
-      "top5_overlap": 0.5692307692307692,
-      "voter_spearman": 0.48626807540347144
+      "top5_overlap": 0.5846153846153845,
+      "voter_spearman": 0.48409158968558114
     },
     "XGB": {
       "seasons": 13,
-      "winner_acc": 0.6153846153846154,
+      "winner_acc": 0.5384615384615384,
       "winner_in_top3": 0.7692307692307693,
-      "top5_overlap": 0.5076923076923078,
-      "voter_spearman": 0.5363935573841612
+      "top5_overlap": 0.5230769230769231,
+      "voter_spearman": 0.5170023802588026
     },
     "BLEND": {
       "seasons": 13,
       "winner_acc": 0.6153846153846154,
       "winner_in_top3": 0.7692307692307693,
-      "top5_overlap": 0.5846153846153846,
-      "voter_spearman": 0.5259140870368693
+      "top5_overlap": 0.5692307692307693,
+      "voter_spearman": 0.5025712952249857
     }
   },
   "misses": [
@@ -53,9 +53,9 @@
     [
       2025,
       "Evan Mobley",
-      "Shai Gilgeous-Alexander"
+      "Ivica Zubac"
     ]
   ],
-  "n_rows": 2905,
+  "n_rows": 2702,
   "n_seasons": 13
 }

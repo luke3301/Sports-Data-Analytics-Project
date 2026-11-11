@@ -22,6 +22,7 @@ Usage:
   python award_trainer.py dpoy_traditional     # DPOY Model 1: reputation, center, top-5 defense, BLK/STL/TRB
   python award_trainer.py dpoy_impact          # DPOY Model 2: DBPM, DWS, BLK%, STL%, DRB% (1983-2026)
   python award_trainer.py dpoy_modern_darko    # experimental: Model 2 + DARKO defensive DPM (2014+)
+  python award_trainer.py roy_modern_darko     # experimental: ROY Model 2 + DARKO DPM (2014+)
   python award_trainer.py mvp --regression     # Model 1's saved config; must reproduce models/cv_results.json
 """
 from __future__ import annotations
@@ -204,16 +205,29 @@ def load_roy() -> pd.DataFrame:
 ROY_TRADITIONAL = ["pts_per_g", "mp_per_g", "gp_pct", "draft_pick_capped"]
 ROY_IMPACT = ["ts_pct", "bpm", "vorp", "team_win_pct"]
 ROY_COMBINED = ROY_TRADITIONAL + ["bpm", "team_win_pct"]
+ROY_MODERN_DARKO = ROY_IMPACT + ["darko_dpm"]
+
+
+def load_roy_modern() -> pd.DataFrame:
+    """ROY candidates from 2014 on, the seasons with DARKO data."""
+    df = load_roy()
+    return df[df["season_id"] >= 2014].reset_index(drop=True)
 
 DPOY_MIN_GAMES_FRACTION = 0.5  # every DPOY winner since 1983 played 68%+ of the schedule ...
 DPOY_MIN_MPG = 20.0            # ... and 27.5+ minutes per game
+# NBA 65-game rule (2023-24 on). Its exceptions (62+ games with a season-ending injury; games of
+# 15-20 minutes) aren't visible in box scores - the 2026 DPOY, Wembanyama, played 64 - so the pool
+# uses the lowest total the rule allows: 62 games.
+DPOY_GAMES_RULE_FROM = 2024
+DPOY_GAMES_RULE_MIN = 62
 
 
 def load_dpoy() -> pd.DataFrame:
     """Every player-season in a DPOY season (1983+) with its DPOY vote share.
 
-    in_eval_pool: at least half the schedule and 20+ minutes per game. Training also keeps any
-    vote-getter below that bar. dws_82 rescales defensive win shares to an 82-game season.
+    in_eval_pool: 20+ minutes per game and at least half the schedule - or, from 2023-24 on, the 65-game
+    rule's 62-game floor. Training also keeps any vote-getter below that bar. dws_82 rescales
+    defensive win shares to an 82-game season.
     """
     adv = pd.read_parquet(AWARDS_DATA / "advanced_full.parquet")
     votes = pd.read_parquet(AWARDS_DATA / "award_votes.parquet")
@@ -225,7 +239,9 @@ def load_dpoy() -> pd.DataFrame:
     df["gp_pct"] = df["games"] / df["season_games"]
     df["dws_82"] = df["dws"] * 82 / df["season_games"]
     df[["is_center", "top5_team_defense"]] = df[["is_center", "top5_team_defense"]].astype(float)
-    df["in_eval_pool"] = (df["gp_pct"] >= DPOY_MIN_GAMES_FRACTION) & (df["mp_per_g"] >= DPOY_MIN_MPG)
+    enough_games = np.where(df["season_id"] >= DPOY_GAMES_RULE_FROM,
+                            df["games"] >= DPOY_GAMES_RULE_MIN, df["gp_pct"] >= DPOY_MIN_GAMES_FRACTION)
+    df["in_eval_pool"] = enough_games & (df["mp_per_g"] >= DPOY_MIN_MPG)
     df = df[df["in_eval_pool"] | (df["share"] > 0)]
     return df.rename(columns={"bbref_id": "player_id"}).reset_index(drop=True)
 
@@ -251,6 +267,8 @@ SPECS: dict[str, AwardSpec] = {
                             "ROY Model 2 - advanced impact: efficiency, BPM, VORP, team success"),
     "roy_combined": AwardSpec("ROY_Combined", load_roy, ROY_COMBINED,
                               "ROY traditional features plus BPM and team win %"),
+    "roy_modern_darko": AwardSpec("ROY_Modern_DARKO", load_roy_modern, ROY_MODERN_DARKO,
+                                  "Experimental: ROY Model 2 features + DARKO DPM, 2014+ only"),
     "dpoy": AwardSpec("DPOY", load_dpoy, DPOY_FEATURES,
                       "DPOY v1 (mixed): DWS, DBPM, DRB/STL/BLK %, team defensive rating"),
     "dpoy_traditional": AwardSpec("DPOY_Traditional", load_dpoy, DPOY_TRADITIONAL,
