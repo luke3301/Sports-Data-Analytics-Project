@@ -24,9 +24,8 @@ import certifi
 import pandas as pd
 from dotenv import load_dotenv
 from sqlalchemy import (Boolean, Column, Date, DateTime, Double, Integer, MetaData, String, Table,
-                        UniqueConstraint, create_engine, delete, func, insert, select, text)
+                        UniqueConstraint, create_engine, delete, func, insert, inspect, select, text)
 from sqlalchemy.engine import Engine, make_url
-from tornado.web import url
 
 ROOT = Path(__file__).parent
 HISTORICAL_CSV = ROOT / "data" / "processed" / "historical_mvp_index.csv"
@@ -60,6 +59,12 @@ daily_predictions = Table(
     Column("model2_rank", Integer),
     Column("model2_share", Double),    # Model 2 ensemble predicted award share
     Column("mvp_index", Double),       # unbounded MVP Dominance Index
+    # Box-score context for the dashboard (season to date, per game)
+    Column("pts", Double),
+    Column("mpg", Double),
+    Column("ts_pct", Double),          # true shooting, as a fraction (0.62 = 62%)
+    Column("bpm", Double),
+    Column("vorp", Double),
     Column("created_at", DateTime, server_default=text("CURRENT_TIMESTAMP")),
     UniqueConstraint("prediction_date", "season_id", "player_id", name="uq_daily_date_season_player"),
     mysql_charset="utf8mb4",
@@ -81,6 +86,26 @@ def get_engine() -> Engine:
     if url.drivername.startswith("mysql"):
         connect_args["ssl"] = {"ca": certifi.where()}
     return create_engine(url, connect_args=connect_args, pool_pre_ping=True, pool_recycle=300)
+
+
+# --------------------------------------------------------------------------- schema migration
+# create_all() only creates missing tables; columns added to daily_predictions after it was first
+# created are added here (nullable, so existing rows are untouched).
+ADDED_DAILY_COLUMNS = {"pts": "DOUBLE", "mpg": "DOUBLE", "ts_pct": "DOUBLE", "bpm": "DOUBLE", "vorp": "DOUBLE"}
+
+
+def ensure_daily_columns(engine: Engine) -> list[str]:
+    metadata.create_all(engine, tables=[daily_predictions])  # no-op if the table exists
+    existing = {c["name"] for c in inspect(engine).get_columns("daily_predictions")}
+    added = [name for name in ADDED_DAILY_COLUMNS if name not in existing]
+    with engine.begin() as conn:
+        for name in added:
+            conn.execute(text(f"ALTER TABLE daily_predictions ADD COLUMN {name} {ADDED_DAILY_COLUMNS[name]} NULL"))
+    return added
+
+
+def _float(v) -> float | None:
+    return None if v is None or pd.isna(v) else float(v)
 
 
 # --------------------------------------------------------------------------- writers
@@ -108,13 +133,17 @@ def write_daily_predictions(engine: Engine, pool: pd.DataFrame, season_id: int,
     """Store one day's snapshot from compare_models.py (its scored `pool` DataFrame).
     Re-running on the same day replaces that day's rows."""
     prediction_date = prediction_date or date.today()
-    metadata.create_all(engine, tables=[daily_predictions])  # no-op if it already exists
+    added = ensure_daily_columns(engine)
+    if added:
+        print(f"daily_predictions: added columns {added}")
     rows = [
         {"prediction_date": prediction_date, "season_id": int(season_id),
          "player_id": str(r.PLAYER_ID), "player": str(r.PLAYER), "team": str(r.TEAM),
          "model1_rank": int(r.M1_RANK), "model1_score": float(r.M1_INDEX), "model1_share": float(r.M1_SHARE),
          "model2_rank": int(r.M2_RANK), "model2_share": float(r.M2_SHARE),
-         "mvp_index": None if pd.isna(r.MVP_INDEX) else float(r.MVP_INDEX)}
+         "mvp_index": _float(r.MVP_INDEX),
+         "pts": _float(r.PTS), "mpg": _float(r.MPG), "ts_pct": _float(r.TS_PCT),
+         "bpm": _float(r.BPM), "vorp": _float(r.VORP)}
         for r in pool.itertuples(index=False)
     ]
     with engine.begin() as conn:

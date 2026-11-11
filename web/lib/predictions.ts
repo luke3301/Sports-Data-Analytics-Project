@@ -10,8 +10,17 @@ export type Prediction = {
   model1Share: number | null; // Model 1 predicted award share (0-1)
   model2Rank: number | null;
   model2Share: number | null; // Model 2 ensemble predicted award share (0-1)
-  mvpIndex: number | null; // unbounded MVP Dominance Index
+  mvpIndex: number | null; // unbounded MVP Dominance Index ("Dominance Score" in the UI)
+  // Season-to-date box score context (null for days saved before these columns existed)
+  pts: number | null;
+  mpg: number | null;
+  tsPct: number | null; // true shooting as a fraction (0.62 = 62%)
+  bpm: number | null;
+  vorp: number | null;
 };
+
+/** Which model's ranking orders the list. Model 2 is the featured model. */
+export type SortModel = "model1" | "model2";
 
 export type PredictionDay = {
   date: string; // YYYY-MM-DD
@@ -33,13 +42,27 @@ type Row = {
   model2_rank: number | null;
   model2_share: number | null;
   mvp_index: number | null;
+  pts: number | null;
+  mpg: number | null;
+  ts_pct: number | null;
+  bpm: number | null;
+  vorp: number | null;
+};
+
+const ORDER_BY: Record<SortModel, string> = {
+  model2: "model2_rank IS NULL, model2_rank",
+  model1: "model1_rank IS NULL, model1_rank",
 };
 
 const num = (v: unknown) => (v === null || v === undefined ? null : Number(v));
 
-/** One day's MVP race from daily_predictions, ordered by Model 1 rank. Latest day if `date` is omitted.
- *  Uncached - callers decide caching. Returns null when there is no data for that day. */
-export async function queryPredictions({ date, limit }: { date?: string; limit?: number } = {}): Promise<PredictionDay | null> {
+/** One day's MVP race from daily_predictions, ordered by Model 2 rank unless `sort` says otherwise.
+ *  Latest day if `date` is omitted. Uncached - callers decide caching. Null when there is no data. */
+export async function queryPredictions({
+  date,
+  limit,
+  sort = "model2",
+}: { date?: string; limit?: number; sort?: SortModel } = {}): Promise<PredictionDay | null> {
   const conn = db();
   const target =
     date ??
@@ -48,10 +71,11 @@ export async function queryPredictions({ date, limit }: { date?: string; limit?:
 
   const rows = (await conn.execute(
     `SELECT prediction_date, season_id, player_id, player, team,
-            model1_rank, model1_score, model1_share, model2_rank, model2_share, mvp_index
+            model1_rank, model1_score, model1_share, model2_rank, model2_share, mvp_index,
+            pts, mpg, ts_pct, bpm, vorp
        FROM daily_predictions
       WHERE prediction_date = ?
-      ORDER BY model1_rank IS NULL, model1_rank
+      ORDER BY ${ORDER_BY[sort]}
       ${limit ? "LIMIT ?" : ""}`,
     limit ? [target, limit] : [target],
   )) as Row[];
@@ -73,11 +97,16 @@ export async function queryPredictions({ date, limit }: { date?: string; limit?:
       model2Rank: num(r.model2_rank),
       model2Share: num(r.model2_share),
       mvpIndex: num(r.mvp_index),
+      pts: num(r.pts),
+      mpg: num(r.mpg),
+      tsPct: num(r.ts_pct),
+      bpm: num(r.bpm),
+      vorp: num(r.vorp),
     })),
   };
 }
 
-/** Latest day's top N for the dashboard. Cached: the data changes once a night, so the page is
+/** Latest day's top N by Model 2 rank for the dashboard. Cached: the data changes once a night, so the page is
  *  served from cache and refreshed in the background at most every 10 minutes. */
 export async function getLatestPredictions(limit: number): Promise<PredictionDay | null> {
   "use cache";
