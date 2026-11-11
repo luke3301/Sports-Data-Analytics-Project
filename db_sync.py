@@ -2,8 +2,9 @@
 Sync MVP data to TiDB Serverless (MySQL-compatible).
 
 Tables (created if missing):
-  historical_mvp     one row per player-season from data/processed/historical_mvp_index.csv
-  daily_predictions  live MVP race snapshots from compare_models.py, one row per player per day
+  historical_mvp          one row per player-season from data/processed/historical_mvp_index.csv
+  daily_predictions       live MVP race snapshots from compare_models.py, one row per player per day
+  daily_roy_predictions   live Rookie of the Year race (rookies only), one row per rookie per day
 
 Usage:
     python db_sync.py              # create tables, replace historical_mvp with the CSV
@@ -65,8 +66,32 @@ daily_predictions = Table(
     Column("ts_pct", Double),          # true shooting, as a fraction (0.62 = 62%)
     Column("bpm", Double),
     Column("vorp", Double),
+    Column("is_rookie", Boolean),
     Column("created_at", DateTime, server_default=text("CURRENT_TIMESTAMP")),
     UniqueConstraint("prediction_date", "season_id", "player_id", name="uq_daily_date_season_player"),
+    mysql_charset="utf8mb4",
+)
+
+daily_roy_predictions = Table(
+    "daily_roy_predictions", metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("prediction_date", Date, nullable=False, index=True),
+    Column("season_id", Integer, nullable=False),
+    Column("player_id", String(32), nullable=False),
+    Column("player", String(64), nullable=False),
+    Column("team", String(8)),
+    Column("roy_rank", Integer),       # ranked by model1_score among rookies passing the ROY baseline
+    Column("model1_score", Double),
+    Column("model1_share", Double),
+    Column("model2_share", Double),
+    Column("mvp_index", Double),       # Dominance Score
+    Column("pts", Double),
+    Column("mpg", Double),
+    Column("ts_pct", Double),
+    Column("bpm", Double),
+    Column("vorp", Double),
+    Column("created_at", DateTime, server_default=text("CURRENT_TIMESTAMP")),
+    UniqueConstraint("prediction_date", "season_id", "player_id", name="uq_roy_date_season_player"),
     mysql_charset="utf8mb4",
 )
 
@@ -91,7 +116,8 @@ def get_engine() -> Engine:
 # --------------------------------------------------------------------------- schema migration
 # create_all() only creates missing tables; columns added to daily_predictions after it was first
 # created are added here (nullable, so existing rows are untouched).
-ADDED_DAILY_COLUMNS = {"pts": "DOUBLE", "mpg": "DOUBLE", "ts_pct": "DOUBLE", "bpm": "DOUBLE", "vorp": "DOUBLE"}
+ADDED_DAILY_COLUMNS = {"pts": "DOUBLE", "mpg": "DOUBLE", "ts_pct": "DOUBLE", "bpm": "DOUBLE", "vorp": "DOUBLE",
+                       "is_rookie": "BOOLEAN"}
 
 
 def ensure_daily_columns(engine: Engine) -> list[str]:
@@ -143,7 +169,8 @@ def write_daily_predictions(engine: Engine, pool: pd.DataFrame, season_id: int,
          "model2_rank": int(r.M2_RANK), "model2_share": float(r.M2_SHARE),
          "mvp_index": _float(r.MVP_INDEX),
          "pts": _float(r.PTS), "mpg": _float(r.MPG), "ts_pct": _float(r.TS_PCT),
-         "bpm": _float(r.BPM), "vorp": _float(r.VORP)}
+         "bpm": _float(r.BPM), "vorp": _float(r.VORP),
+         "is_rookie": bool(r.IS_ROOKIE) if hasattr(r, "IS_ROOKIE") else None}
         for r in pool.itertuples(index=False)
     ]
     with engine.begin() as conn:
@@ -155,10 +182,34 @@ def write_daily_predictions(engine: Engine, pool: pd.DataFrame, season_id: int,
     return len(rows)
 
 
+def write_daily_roy(engine: Engine, roy: pd.DataFrame, season_id: int,
+                    prediction_date: date | None = None) -> int:
+    """Store one day's Rookie of the Year race (compare_models.py's ranked rookie pool).
+    Re-running on the same day replaces that day's rows."""
+    prediction_date = prediction_date or date.today()
+    metadata.create_all(engine, tables=[daily_roy_predictions])  # no-op if it already exists
+    rows = [
+        {"prediction_date": prediction_date, "season_id": int(season_id),
+         "player_id": str(r.PLAYER_ID), "player": str(r.PLAYER), "team": str(r.TEAM),
+         "roy_rank": int(r.ROY_RANK), "model1_score": _float(r.M1_INDEX), "model1_share": _float(r.M1_SHARE),
+         "model2_share": _float(r.M2_SHARE), "mvp_index": _float(r.MVP_INDEX),
+         "pts": _float(r.PTS), "mpg": _float(r.MPG), "ts_pct": _float(r.TS_PCT),
+         "bpm": _float(r.BPM), "vorp": _float(r.VORP)}
+        for r in roy.itertuples(index=False)
+    ]
+    with engine.begin() as conn:
+        conn.execute(delete(daily_roy_predictions).where(
+            (daily_roy_predictions.c.prediction_date == prediction_date)
+            & (daily_roy_predictions.c.season_id == int(season_id))))
+        for i in range(0, len(rows), CHUNK):
+            conn.execute(insert(daily_roy_predictions), rows[i:i + CHUNK])
+    return len(rows)
+
+
 def row_counts(engine: Engine) -> dict[str, int]:
     with engine.connect() as conn:
         return {t.name: conn.execute(select(func.count()).select_from(t)).scalar_one()
-                for t in (historical_mvp, daily_predictions)}
+                for t in (historical_mvp, daily_predictions, daily_roy_predictions)}
 
 
 def main():

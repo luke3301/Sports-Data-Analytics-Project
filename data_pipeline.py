@@ -215,6 +215,25 @@ def fetch_standings(season_id: int, refresh: bool) -> pd.DataFrame:
     return _cached(RAW_DIR / f"standings_{season_id}.parquet", fetch, refresh)
 
 
+def fetch_rookie_ids(season_id: int, refresh: bool) -> set[str]:
+    """PLAYER_IDs of that season's rookies, via stats.nba.com's own "Rookie" experience filter
+    (one request; cached to data/raw/rookies_<season>.parquet). stats.nba.com seasons only (1997+)."""
+    def fetch():
+        df = nba_call(
+            lambda: leaguedashplayerstats.LeagueDashPlayerStats(
+                season=season_label(season_id),
+                per_mode_detailed="PerGame",
+                player_experience_nullable="Rookie",
+                timeout=NBA_TIMEOUT,
+            ).get_data_frames()[0],
+            f"nba_api rookies {season_id}",
+        )
+        time.sleep(NBA_API_SLEEP)
+        return df[["PLAYER_ID", "PLAYER_NAME"]]
+
+    return set(_cached(RAW_DIR / f"rookies_{season_id}.parquet", fetch, refresh)["PLAYER_ID"].astype(str))
+
+
 def fetch_bbref_advanced(season_id: int, refresh: bool) -> pd.DataFrame:
     def fetch():
         t = _bbref_tables(f"https://www.basketball-reference.com/leagues/NBA_{season_id}_advanced.html")[0]

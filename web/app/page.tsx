@@ -1,3 +1,4 @@
+import { SiteNav } from "@/components/site-nav";
 import { getLatestPredictions, type Prediction } from "@/lib/predictions";
 
 const TEAM_NAMES: Record<string, string> = {
@@ -139,8 +140,11 @@ export default async function Home() {
 
   return (
     <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-16 px-6 py-12 sm:gap-20 sm:px-10 sm:py-20">
-      <header className="flex flex-col gap-2 sm:flex-row sm:items-baseline sm:justify-between">
-        <p className="text-sm font-bold uppercase tracking-[0.2em] text-amber-400">NBA MVP Race</p>
+      <header className="flex flex-col gap-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-baseline sm:justify-between">
+          <p className="text-sm font-bold uppercase tracking-[0.2em] text-amber-400">NBA MVP Race</p>
+          <SiteNav current="/" />
+        </div>
         {day && (
           <p className="text-sm text-zinc-500">
             {day.season} season · Updated {formatDate(day.date)}
