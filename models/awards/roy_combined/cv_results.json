@@ -1,0 +1,91 @@
+{
+  "award": "ROY_Combined",
+  "config": {
+    "lam": 0.01,
+    "depth": 2,
+    "n_est": 150,
+    "w_linear": 0.75
+  },
+  "loso": {
+    "LINEAR": {
+      "seasons": 47,
+      "winner_acc": 0.7872340425531915,
+      "winner_in_top3": 1.0,
+      "top5_overlap": 0.8765957446808508,
+      "voter_spearman": 0.7386184003689674
+    },
+    "XGB": {
+      "seasons": 47,
+      "winner_acc": 0.6808510638297872,
+      "winner_in_top3": 0.9787234042553191,
+      "top5_overlap": 0.8468085106382977,
+      "voter_spearman": 0.7561734623909558
+    },
+    "BLEND": {
+      "seasons": 47,
+      "winner_acc": 0.7659574468085106,
+      "winner_in_top3": 0.9787234042553191,
+      "top5_overlap": 0.8851063829787231,
+      "voter_spearman": 0.7747414252303895
+    }
+  },
+  "misses": [
+    [
+      1980,
+      "Larry Bird",
+      "Magic Johnson"
+    ],
+    [
+      1981,
+      "Darrell Griffith",
+      "Joe Barry Carroll"
+    ],
+    [
+      1982,
+      "Buck Williams",
+      "Kelly Tripucka"
+    ],
+    [
+      1987,
+      "Chuck Person",
+      "Ron Harper"
+    ],
+    [
+      2001,
+      "Mike Miller",
+      "Kenyon Martin"
+    ],
+    [
+      2003,
+      "Amar'e Stoudemire",
+      "Yao Ming"
+    ],
+    [
+      2005,
+      "Emeka Okafor",
+      "Dwight Howard"
+    ],
+    [
+      2017,
+      "Malcolm Brogdon",
+      "Dario \u0160ari\u0107"
+    ],
+    [
+      2021,
+      "LaMelo Ball",
+      "Anthony Edwards"
+    ],
+    [
+      2025,
+      "Stephon Castle",
+      "Zaccharie Risacher"
+    ],
+    [
+      2026,
+      "Cooper Flagg",
+      "Kon Knueppel"
+    ]
+  ],
+  "n_rows": 1539,
+  "n_seasons": 47
+}

@@ -16,9 +16,14 @@ Outputs (data/processed/awards/):
   drafts.parquet                every draft 1976+: bbref_id, draft year, overall pick
   team_ratings.parquet          team-season offense/defense/net ratings (raw, league-relative, rank)
 
-advanced_full also carries the context columns the award models need: draft_year, draft_pick,
-undrafted (ROY) and the player's team's win %, defensive rating, league-relative defensive rating
-and defensive rank (DPOY). Traded players get their last team's ratings.
+advanced_full also carries the context columns the award models need:
+  ROY    draft_year, draft_pick, undrafted
+  DPOY   team_win_pct, team_drtg (+ league-relative, rank), top5_team_defense, is_center
+  all    prev_<award>_share: the player's vote share for each award the previous season
+         (reputation; known before the season starts, so not a leak)
+  2014+  darko_ddpm: DARKO's defensive DPM (data/raw/darko_<season>.csv, matched by accent-folded
+         name plus the alias map in rebuild_model2.py; DARKO's historical files have no player IDs)
+Traded players get their last team's ratings.
 
 Usage:
     python awards_data.py                    # build everything (fetches only pages not cached yet)
@@ -49,6 +54,7 @@ PAGES = {
     "ratings": BBREF + "/leagues/NBA_{season}_ratings.html",
     "league": BBREF + "/leagues/NBA_{season}.html",          # fallback team ratings (see parse_ratings)
 }
+DARKO_FIRST_SEASON = 2014
 FIRST_DRAFT = 1976  # Larry Bird (1979-80 rookie) was drafted in 1978; 1976 covers every 1980+ rookie
 HTML_DIR = dp.RAW_DIR / "html" / "bbref"
 OUT_DIR = dp.PROC_DIR / "awards"
@@ -282,6 +288,35 @@ def nba_rookie_ids(season: int, refresh: bool = False) -> set[str]:
     return set(dp._cached(dp.RAW_DIR / f"rookies_{season}.parquet", fetch, refresh)["PLAYER_ID"].astype(str))
 
 
+def add_prev_season_shares(adv: pd.DataFrame, votes: pd.DataFrame) -> pd.DataFrame:
+    """prev_<award>_share: last season's vote share for every award (0 if no votes or no award yet)."""
+    prev = votes.pivot_table(index=["season_id", "bbref_id"], columns="award", values="share", aggfunc="max")
+    prev.columns = [f"prev_{c.lower()}_share" for c in prev.columns]
+    prev = prev.reset_index().assign(season_id=lambda d: d["season_id"] + 1)
+    out = adv.merge(prev, on=["season_id", "bbref_id"], how="left")
+    cols = [c for c in prev.columns if c.startswith("prev_")]
+    out[cols] = out[cols].fillna(0.0)
+    return out
+
+
+def add_darko_ddpm(adv: pd.DataFrame) -> pd.DataFrame:
+    """DARKO defensive DPM for seasons that have a data/raw/darko_<season>.csv (2014+)."""
+    from rebuild_model2 import NAME_ALIASES  # nicknames DARKO lists differently (Enes Freedom -> Kanter, ...)
+    adv = adv.copy()
+    adv["darko_ddpm"] = float("nan")
+    for season in sorted(adv["season_id"].unique()):
+        path = dp.RAW_DIR / f"darko_{season}.csv"
+        if season < DARKO_FIRST_SEASON or not path.exists():
+            continue
+        d = pd.read_csv(path, encoding="utf-8-sig")
+        d["key"] = d["Player"].map(name_key)
+        d = d[~d["key"].duplicated(keep=False)].set_index("key")  # ambiguous names left unmatched
+        rows = adv["season_id"] == season
+        keys = adv.loc[rows, "player"].map(name_key).replace(NAME_ALIASES)
+        adv.loc[rows, "darko_ddpm"] = keys.map(pd.to_numeric(d["DDPM"], errors="coerce")).to_numpy()
+    return adv
+
+
 def build_crosswalk(adv: pd.DataFrame) -> pd.DataFrame:
     """bbref_id <-> nba_api PLAYER_ID, matched season by season on accent-folded name (games played
     breaks ties), then resolved per player by majority vote across seasons."""
@@ -370,6 +405,11 @@ def build(start: int, end: int, refresh: bool = False):
     adv["undrafted"] = adv["draft_pick"].isna()
     # Team context (traded players: their last team)
     adv = adv.merge(ratings.drop(columns=["team_name"]), on=["season_id", "team"], how="left")
+    adv["top5_team_defense"] = adv["team_drtg_rank"] <= 5
+    adv["is_center"] = adv["pos"] == "C"
+    # Reputation and DARKO defense
+    adv = add_prev_season_shares(adv, votes)
+    adv = add_darko_ddpm(adv)
 
     xwalk = build_crosswalk(adv)
     to_nba = xwalk.set_index("bbref_id")["nba_player_id"]

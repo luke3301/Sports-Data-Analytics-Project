@@ -1,40 +1,35 @@
 {
   "award": "ROY_Impact",
   "config": {
-    "lam": 0.01,
-    "depth": 3,
-    "n_est": 150,
-    "w_linear": 0.25
+    "lam": 0.003,
+    "depth": 2,
+    "n_est": 300,
+    "w_linear": 0.75
   },
   "loso": {
     "LINEAR": {
       "seasons": 47,
-      "winner_acc": 0.5531914893617021,
+      "winner_acc": 0.5957446808510638,
       "winner_in_top3": 0.8085106382978723,
-      "top5_overlap": 0.7191489361702128,
-      "voter_spearman": 0.38361334069009345
+      "top5_overlap": 0.7063829787234043,
+      "voter_spearman": 0.40447680489833304
     },
     "XGB": {
       "seasons": 47,
-      "winner_acc": 0.5319148936170213,
-      "winner_in_top3": 0.8085106382978723,
-      "top5_overlap": 0.6851063829787235,
-      "voter_spearman": 0.4052520289090114
+      "winner_acc": 0.5106382978723404,
+      "winner_in_top3": 0.7872340425531915,
+      "top5_overlap": 0.6893617021276596,
+      "voter_spearman": 0.3998166170677516
     },
     "BLEND": {
       "seasons": 47,
-      "winner_acc": 0.5319148936170213,
-      "winner_in_top3": 0.8085106382978723,
-      "top5_overlap": 0.7148936170212767,
-      "voter_spearman": 0.4002413431766524
+      "winner_acc": 0.574468085106383,
+      "winner_in_top3": 0.851063829787234,
+      "top5_overlap": 0.7063829787234043,
+      "voter_spearman": 0.3823422663438693
     }
   },
   "misses": [
-    [
-      1980,
-      "Larry Bird",
-      "Magic Johnson"
-    ],
     [
       1981,
       "Darrell Griffith",
@@ -43,12 +38,12 @@
     [
       1982,
       "Buck Williams",
-      "Jay Vincent"
+      "Kelly Tripucka"
     ],
     [
       1986,
       "Patrick Ewing",
-      "Xavier McDaniel"
+      "Manute Bol"
     ],
     [
       1987,
@@ -59,6 +54,11 @@
       1989,
       "Mitch Richmond",
       "Willie Anderson"
+    ],
+    [
+      1994,
+      "Chris Webber",
+      "Anfernee Hardaway"
     ],
     [
       1996,
@@ -83,7 +83,7 @@
     [
       2005,
       "Emeka Okafor",
-      "Josh Childress"
+      "Andre Iguodala"
     ],
     [
       2008,
@@ -106,16 +106,6 @@
       "Nikola Miroti\u0107"
     ],
     [
-      2016,
-      "Karl-Anthony Towns",
-      "Nikola Joki\u0107"
-    ],
-    [
-      2017,
-      "Malcolm Brogdon",
-      "Joel Embiid"
-    ],
-    [
       2020,
       "Ja Morant",
       "Brandon Clarke"
@@ -133,7 +123,7 @@
     [
       2025,
       "Stephon Castle",
-      "Donovan Clingan"
+      "Kel'el Ware"
     ],
     [
       2026,
@@ -141,6 +131,6 @@
       "Kon Knueppel"
     ]
   ],
-  "n_rows": 1633,
+  "n_rows": 1539,
   "n_seasons": 47
 }

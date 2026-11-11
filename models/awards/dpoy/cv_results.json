@@ -1,0 +1,166 @@
+{
+  "award": "DPOY",
+  "config": {
+    "lam": 0.03,
+    "depth": 2,
+    "n_est": 150,
+    "w_linear": 0.75
+  },
+  "loso": {
+    "LINEAR": {
+      "seasons": 44,
+      "winner_acc": 0.45454545454545453,
+      "winner_in_top3": 0.6136363636363636,
+      "top5_overlap": 0.5318181818181819,
+      "voter_spearman": 0.4760229036580376
+    },
+    "XGB": {
+      "seasons": 44,
+      "winner_acc": 0.36363636363636365,
+      "winner_in_top3": 0.6363636363636364,
+      "top5_overlap": 0.5272727272727272,
+      "voter_spearman": 0.4850111608003132
+    },
+    "BLEND": {
+      "seasons": 44,
+      "winner_acc": 0.4090909090909091,
+      "winner_in_top3": 0.6590909090909091,
+      "top5_overlap": 0.5454545454545455,
+      "voter_spearman": 0.49596445708413217
+    }
+  },
+  "misses": [
+    [
+      1983,
+      "Sidney Moncrief",
+      "Tree Rollins"
+    ],
+    [
+      1984,
+      "Sidney Moncrief",
+      "Mark Eaton"
+    ],
+    [
+      1986,
+      "Alvin Robertson",
+      "Manute Bol"
+    ],
+    [
+      1987,
+      "Michael Cooper",
+      "Mark Eaton"
+    ],
+    [
+      1989,
+      "Mark Eaton",
+      "Hakeem Olajuwon"
+    ],
+    [
+      1990,
+      "Dennis Rodman",
+      "Hakeem Olajuwon"
+    ],
+    [
+      1991,
+      "Dennis Rodman",
+      "Hakeem Olajuwon"
+    ],
+    [
+      1994,
+      "Hakeem Olajuwon",
+      "David Robinson"
+    ],
+    [
+      1995,
+      "Dikembe Mutombo",
+      "David Robinson"
+    ],
+    [
+      1996,
+      "Gary Payton",
+      "David Robinson"
+    ],
+    [
+      1998,
+      "Dikembe Mutombo",
+      "David Robinson"
+    ],
+    [
+      1999,
+      "Alonzo Mourning",
+      "David Robinson"
+    ],
+    [
+      2000,
+      "Alonzo Mourning",
+      "David Robinson"
+    ],
+    [
+      2001,
+      "Dikembe Mutombo",
+      "David Robinson"
+    ],
+    [
+      2004,
+      "Metta World Peace",
+      "Ben Wallace"
+    ],
+    [
+      2005,
+      "Ben Wallace",
+      "Tim Duncan"
+    ],
+    [
+      2008,
+      "Kevin Garnett",
+      "Marcus Camby"
+    ],
+    [
+      2012,
+      "Tyson Chandler",
+      "Serge Ibaka"
+    ],
+    [
+      2013,
+      "Marc Gasol",
+      "Tim Duncan"
+    ],
+    [
+      2015,
+      "Kawhi Leonard",
+      "Draymond Green"
+    ],
+    [
+      2016,
+      "Kawhi Leonard",
+      "Hassan Whiteside"
+    ],
+    [
+      2018,
+      "Rudy Gobert",
+      "Andre Drummond"
+    ],
+    [
+      2019,
+      "Rudy Gobert",
+      "Giannis Antetokounmpo"
+    ],
+    [
+      2022,
+      "Marcus Smart",
+      "Nikola Joki\u0107"
+    ],
+    [
+      2024,
+      "Rudy Gobert",
+      "Victor Wembanyama"
+    ],
+    [
+      2025,
+      "Evan Mobley",
+      "Victor Wembanyama"
+    ]
+  ],
+  "n_rows": 8898,
+  "n_seasons": 44
+}

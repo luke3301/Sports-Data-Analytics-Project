@@ -1,0 +1,146 @@
+{
+  "award": "DPOY_Traditional",
+  "config": {
+    "lam": 0.01,
+    "depth": 2,
+    "n_est": 150,
+    "w_linear": 0.75
+  },
+  "loso": {
+    "LINEAR": {
+      "seasons": 44,
+      "winner_acc": 0.4090909090909091,
+      "winner_in_top3": 0.6590909090909091,
+      "top5_overlap": 0.5045454545454545,
+      "voter_spearman": 0.5039146277588992
+    },
+    "XGB": {
+      "seasons": 44,
+      "winner_acc": 0.4318181818181818,
+      "winner_in_top3": 0.6818181818181818,
+      "top5_overlap": 0.5681818181818181,
+      "voter_spearman": 0.48957282971328503
+    },
+    "BLEND": {
+      "seasons": 44,
+      "winner_acc": 0.5,
+      "winner_in_top3": 0.6818181818181818,
+      "top5_overlap": 0.5727272727272728,
+      "voter_spearman": 0.5474472945995115
+    }
+  },
+  "misses": [
+    [
+      1983,
+      "Sidney Moncrief",
+      "Moses Malone"
+    ],
+    [
+      1984,
+      "Sidney Moncrief",
+      "Larry Bird"
+    ],
+    [
+      1986,
+      "Alvin Robertson",
+      "Mark Eaton"
+    ],
+    [
+      1987,
+      "Michael Cooper",
+      "Hakeem Olajuwon"
+    ],
+    [
+      1988,
+      "Michael Jordan",
+      "Mark Eaton"
+    ],
+    [
+      1989,
+      "Mark Eaton",
+      "Hakeem Olajuwon"
+    ],
+    [
+      1990,
+      "Dennis Rodman",
+      "Hakeem Olajuwon"
+    ],
+    [
+      1991,
+      "Dennis Rodman",
+      "Hakeem Olajuwon"
+    ],
+    [
+      1995,
+      "Dikembe Mutombo",
+      "David Robinson"
+    ],
+    [
+      1996,
+      "Gary Payton",
+      "David Robinson"
+    ],
+    [
+      1999,
+      "Alonzo Mourning",
+      "Dikembe Mutombo"
+    ],
+    [
+      2000,
+      "Alonzo Mourning",
+      "Shaquille O'Neal"
+    ],
+    [
+      2002,
+      "Ben Wallace",
+      "Tim Duncan"
+    ],
+    [
+      2004,
+      "Metta World Peace",
+      "Ben Wallace"
+    ],
+    [
+      2007,
+      "Marcus Camby",
+      "Ben Wallace"
+    ],
+    [
+      2008,
+      "Kevin Garnett",
+      "Marcus Camby"
+    ],
+    [
+      2012,
+      "Tyson Chandler",
+      "Dwight Howard"
+    ],
+    [
+      2013,
+      "Marc Gasol",
+      "Serge Ibaka"
+    ],
+    [
+      2015,
+      "Kawhi Leonard",
+      "DeAndre Jordan"
+    ],
+    [
+      2022,
+      "Marcus Smart",
+      "Rudy Gobert"
+    ],
+    [
+      2024,
+      "Rudy Gobert",
+      "Victor Wembanyama"
+    ],
+    [
+      2025,
+      "Evan Mobley",
+      "Victor Wembanyama"
+    ]
+  ],
+  "n_rows": 8898,
+  "n_seasons": 44
+}

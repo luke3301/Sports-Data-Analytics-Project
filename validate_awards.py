@@ -157,6 +157,18 @@ def main():
     best_d = ratings.loc[ratings.groupby("season_id")["team_drtg_rank"].idxmin()]
     print(f"       best defense, recent seasons: {best_d[best_d.season_id >= 2022][['season_id', 'team', 'team_drtg']].values.tolist()}")
 
+    print("12. Reputation, position and DARKO features (DPOY)")
+    dw = votes[(votes.award == "DPOY") & votes.is_winner].merge(adv, on=["season_id", "bbref_id"])
+    repeat = dw[dw["season_id"].isin([1994, 2019, 2021])][["season_id", "player_x", "prev_dpoy_share"]]
+    check((repeat["prev_dpoy_share"] > 0).all(), "repeat winners carry last season's DPOY share",
+          str(repeat.round(3).values.tolist()))
+    check(adv.loc[adv.season_id == 1983, "prev_dpoy_share"].eq(0).all(), "1983 (first DPOY) has no prior DPOY share")
+    check(dw["is_center"].sum() >= 25, f"{int(dw['is_center'].sum())} of {len(dw)} DPOY winners are centers")
+    modern = adv[(adv.season_id >= 2014) & (adv.mp >= 500)]
+    cov = modern["darko_ddpm"].notna().mean()
+    check(cov >= 0.97, f"DARKO DDPM for {cov:.1%} of 2014+ player-seasons with 500+ minutes")
+    check(adv.loc[adv.season_id < 2014, "darko_ddpm"].isna().all(), "no DARKO values before 2014")
+
     print("\nAward winners by season (ROY, DPOY):")
     table = (w[w.award.isin(["ROY", "DPOY"])].groupby(["season_id", "award"])["player"]
              .agg(" & ".join).unstack().reindex(columns=["ROY", "DPOY"]))

@@ -17,6 +17,11 @@ Usage:
   python award_trainer.py mvp                  # grid search + final fit -> models/awards/mvp/
   python award_trainer.py roy_traditional      # ROY Model 1: points, minutes, games, draft pick
   python award_trainer.py roy_impact           # ROY Model 2: TS%, BPM, VORP, team win %
+  python award_trainer.py roy_combined         # traditional features + BPM + team win %
+  python award_trainer.py dpoy                 # DPOY v1: DWS, DBPM, DRB/STL/BLK %, team defensive rating
+  python award_trainer.py dpoy_traditional     # DPOY Model 1: reputation, center, top-5 defense, BLK/STL/TRB
+  python award_trainer.py dpoy_impact          # DPOY Model 2: DBPM, DWS, BLK%, STL%, DRB% (1983-2026)
+  python award_trainer.py dpoy_modern_darko    # experimental: Model 2 + DARKO defensive DPM (2014+)
   python award_trainer.py mvp --regression     # Model 1's saved config; must reproduce models/cv_results.json
 """
 from __future__ import annotations
@@ -169,14 +174,17 @@ def load_mvp() -> pd.DataFrame:
 
 
 ROY_MIN_MINUTES_82 = 500   # rookie candidate pool: 500+ minutes, scaled to an 82-game season
+ROY_MIN_GAMES_FRACTION = 0.5  # ... and at least half the schedule (handles 1999, 2012, 2020); no
+                              # ROY winner since 1980 played less than 61%
 UNDRAFTED_PICK = 61        # one past the last pick of a modern draft; older 7-10 round drafts are capped here
 
 
 def load_roy() -> pd.DataFrame:
     """Every rookie season (bbref's rookie lists) with its ROY vote share.
 
-    in_eval_pool: rookies with 500+ minutes per 82 games (who a prediction would rank). Training also
-    keeps any vote-getter below that bar, so no labels are dropped (same idea as MVP).
+    in_eval_pool: rookies with 500+ minutes per 82 games who played at least half the schedule (who a
+    prediction would rank). Training also keeps any vote-getter below that bar, so no labels are dropped
+    (same idea as MVP) - and the model sees that voters mark down rookies who missed most of a season.
     """
     adv = pd.read_parquet(AWARDS_DATA / "advanced_full.parquet")
     votes = pd.read_parquet(AWARDS_DATA / "award_votes.parquet")
@@ -187,13 +195,53 @@ def load_roy() -> pd.DataFrame:
     df["share"] = df["share"].fillna(0.0)
     df["gp_pct"] = df["games"] / df["season_games"]
     df["draft_pick_capped"] = df["draft_pick"].clip(upper=UNDRAFTED_PICK).fillna(UNDRAFTED_PICK)
-    df["in_eval_pool"] = df["mp"] * 82 / df["season_games"] >= ROY_MIN_MINUTES_82
+    df["in_eval_pool"] = ((df["mp"] * 82 / df["season_games"] >= ROY_MIN_MINUTES_82)
+                          & (df["gp_pct"] >= ROY_MIN_GAMES_FRACTION))
     df = df[df["in_eval_pool"] | (df["share"] > 0)]
     return df.rename(columns={"bbref_id": "player_id"}).reset_index(drop=True)
 
 
 ROY_TRADITIONAL = ["pts_per_g", "mp_per_g", "gp_pct", "draft_pick_capped"]
 ROY_IMPACT = ["ts_pct", "bpm", "vorp", "team_win_pct"]
+ROY_COMBINED = ROY_TRADITIONAL + ["bpm", "team_win_pct"]
+
+DPOY_MIN_GAMES_FRACTION = 0.5  # every DPOY winner since 1983 played 68%+ of the schedule ...
+DPOY_MIN_MPG = 20.0            # ... and 27.5+ minutes per game
+
+
+def load_dpoy() -> pd.DataFrame:
+    """Every player-season in a DPOY season (1983+) with its DPOY vote share.
+
+    in_eval_pool: at least half the schedule and 20+ minutes per game. Training also keeps any
+    vote-getter below that bar. dws_82 rescales defensive win shares to an 82-game season.
+    """
+    adv = pd.read_parquet(AWARDS_DATA / "advanced_full.parquet")
+    votes = pd.read_parquet(AWARDS_DATA / "award_votes.parquet")
+    dpoy = votes.loc[votes["award"] == "DPOY", ["season_id", "bbref_id", "share"]]
+
+    df = adv[adv["season_id"].isin(dpoy["season_id"].unique())]
+    df = df.merge(dpoy, on=["season_id", "bbref_id"], how="left")
+    df["share"] = df["share"].fillna(0.0)
+    df["gp_pct"] = df["games"] / df["season_games"]
+    df["dws_82"] = df["dws"] * 82 / df["season_games"]
+    df[["is_center", "top5_team_defense"]] = df[["is_center", "top5_team_defense"]].astype(float)
+    df["in_eval_pool"] = (df["gp_pct"] >= DPOY_MIN_GAMES_FRACTION) & (df["mp_per_g"] >= DPOY_MIN_MPG)
+    df = df[df["in_eval_pool"] | (df["share"] > 0)]
+    return df.rename(columns={"bbref_id": "player_id"}).reset_index(drop=True)
+
+
+DPOY_FEATURES = ["dws_82", "dbpm", "drb_pct", "stl_pct", "blk_pct", "team_drtg_rel"]  # v1 (mixed)
+# Model 1 - traditional voter: reputation, position, team defense, visible box-score defense
+DPOY_TRADITIONAL = ["prev_dpoy_share", "is_center", "top5_team_defense", "blk_per_g", "stl_per_g", "trb_per_g"]
+# Model 2 - advanced impact (DWS rescaled to 82 games so lockout seasons compare)
+DPOY_IMPACT = ["dbpm", "dws_82", "blk_pct", "stl_pct", "drb_pct"]
+DPOY_MODERN_DARKO = DPOY_IMPACT + ["darko_ddpm"]
+
+
+def load_dpoy_modern() -> pd.DataFrame:
+    """DPOY candidates from 2014 on, the seasons with DARKO data."""
+    df = load_dpoy()
+    return df[df["season_id"] >= 2014].reset_index(drop=True)
 
 SPECS: dict[str, AwardSpec] = {
     "mvp": AwardSpec("MVP", load_mvp, m1.FEATURES, "Most Valuable Player (reproduces Model 1)"),
@@ -201,6 +249,16 @@ SPECS: dict[str, AwardSpec] = {
                                  "ROY Model 1 - traditional voter: scoring, minutes, games, draft pick"),
     "roy_impact": AwardSpec("ROY_Impact", load_roy, ROY_IMPACT,
                             "ROY Model 2 - advanced impact: efficiency, BPM, VORP, team success"),
+    "roy_combined": AwardSpec("ROY_Combined", load_roy, ROY_COMBINED,
+                              "ROY traditional features plus BPM and team win %"),
+    "dpoy": AwardSpec("DPOY", load_dpoy, DPOY_FEATURES,
+                      "DPOY v1 (mixed): DWS, DBPM, DRB/STL/BLK %, team defensive rating"),
+    "dpoy_traditional": AwardSpec("DPOY_Traditional", load_dpoy, DPOY_TRADITIONAL,
+                                  "DPOY Model 1 - traditional voter: reputation, center, top-5 defense, BLK/STL/TRB"),
+    "dpoy_impact": AwardSpec("DPOY_Impact", load_dpoy, DPOY_IMPACT,
+                             "DPOY Model 2 - advanced impact: DBPM, DWS, BLK%, STL%, DRB%"),
+    "dpoy_modern_darko": AwardSpec("DPOY_Modern_DARKO", load_dpoy_modern, DPOY_MODERN_DARKO,
+                                   "Experimental: DPOY Model 2 features + DARKO defensive DPM, 2014+ only"),
 }
 
 
