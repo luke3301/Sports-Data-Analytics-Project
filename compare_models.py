@@ -35,6 +35,10 @@ ONOFF_SLEEP = 2.0
 CURRENT_SEASON = 2027                          # 2026-27, the season darko_live.csv covers
 LIVE_DARKO = dp.RAW_DIR / "darko_live.csv"     # written by download_darko.py
 STALE_DAYS = 2
+# MVP baseline: every MVP since 1980 averaged well above both. Applied after scoring and before
+# ranking, so it changes who is ranked, never a player's model scores or the model weights.
+MVP_MIN_PTS = 15.0
+MVP_MIN_MPG = 28.0
 
 
 # --------------------------------------------------------------------------- season data
@@ -175,6 +179,10 @@ def main():
     ap.add_argument("--no-refresh", action="store_true", help="use cached data instead of re-pulling")
     ap.add_argument("--min-games", type=float, default=None, help="override games-played threshold")
     ap.add_argument("--min-mpg", type=float, default=dp.MIN_MPG)
+    ap.add_argument("--mvp-min-pts", type=float, default=MVP_MIN_PTS,
+                    help="MVP baseline: minimum points per game to be ranked (default %(default)s)")
+    ap.add_argument("--mvp-min-mpg", type=float, default=MVP_MIN_MPG,
+                    help="MVP baseline: minimum minutes per game to be ranked (default %(default)s)")
     ap.add_argument("--legacy-darko-merge", action="store_true",
                     help="merge DPM by the notebook's name key (reproduces Model 2's training data)")
     ap.add_argument("--darko-file", default=None,
@@ -195,11 +203,25 @@ def main():
         raise SystemExit("No players pass the eligibility filter - lower --min-games / --min-mpg")
 
     pool = score_dominance(score_model2(score_model1(pool)))
+
+    # MVP baseline filter: drop low-usage players whose early-season impact metrics run hot
+    baseline = (pool["PTS"] >= a.mvp_min_pts) & (pool["MPG"] >= a.mvp_min_mpg)
+    would_rank = pool["M2_SHARE"].rank(ascending=False, method="first")
+    cut = pool[~baseline & (would_rank <= a.top)].sort_values("M2_SHARE", ascending=False)
+    n_eligible = len(pool)
+    pool = pool[baseline].copy()
+    if pool.empty:
+        raise SystemExit("No players pass the MVP baseline - lower --mvp-min-pts / --mvp-min-mpg")
+
     pool["M1_RANK"] = pool["M1_INDEX"].rank(ascending=False, method="first").astype(int)
     pool["M2_RANK"] = pool["M2_SHARE"].rank(ascending=False, method="first").astype(int)
 
     print(f"\n{dp.season_label(a.season)} - most games played by any team: {games_so_far}. "
-          f"Eligible: >= {min_games:.1f} GP and >= {a.min_mpg:.0f} MPG -> {len(pool)} players")
+          f"Eligible: >= {min_games:.1f} GP and >= {a.min_mpg:.0f} MPG -> {n_eligible} players")
+    print(f"MVP baseline: >= {a.mvp_min_pts:g} PTS and >= {a.mvp_min_mpg:g} MPG -> {len(pool)} ranked")
+    if len(cut):
+        print(f"  removed from the Model 2 top {a.top}: " + ", ".join(
+            f"{r.PLAYER} ({r.PTS:.1f} PTS, {r.MPG:.1f} MPG)" for r in cut.itertuples()))
     if games_so_far < 20:
         print("Early season: samples are tiny and Z-scores swing a lot game to game. Treat this as a snapshot.")
 
