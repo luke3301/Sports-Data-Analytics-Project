@@ -15,6 +15,8 @@ Standard frame columns (one row per candidate player-season):
 
 Usage:
   python award_trainer.py mvp                  # grid search + final fit -> models/awards/mvp/
+  python award_trainer.py roy_traditional      # ROY Model 1: points, minutes, games, draft pick
+  python award_trainer.py roy_impact           # ROY Model 2: TS%, BPM, VORP, team win %
   python award_trainer.py mvp --regression     # Model 1's saved config; must reproduce models/cv_results.json
 """
 from __future__ import annotations
@@ -37,6 +39,7 @@ import model_trainer as m1  # Model 1's model classes (ConditionalLogit, Blend) 
 
 ROOT = Path(__file__).parent
 OUT_ROOT = ROOT / "models" / "awards"
+AWARDS_DATA = ROOT / "data" / "processed" / "awards"   # built by awards_data.py
 STANDARD = ["season_id", "player_id", "player", "share", "in_eval_pool"]
 
 DEFAULT_GRID = dict(lam=[0.003, 0.01, 0.03], depth=[2, 3], n_est=[150, 300], w_linear=[0.25, 0.5, 0.75])
@@ -165,8 +168,39 @@ def load_mvp() -> pd.DataFrame:
                               "MVP_SHARE": "share", "ELIGIBLE_NOLABEL": "in_eval_pool"})
 
 
+ROY_MIN_MINUTES_82 = 500   # rookie candidate pool: 500+ minutes, scaled to an 82-game season
+UNDRAFTED_PICK = 61        # one past the last pick of a modern draft; older 7-10 round drafts are capped here
+
+
+def load_roy() -> pd.DataFrame:
+    """Every rookie season (bbref's rookie lists) with its ROY vote share.
+
+    in_eval_pool: rookies with 500+ minutes per 82 games (who a prediction would rank). Training also
+    keeps any vote-getter below that bar, so no labels are dropped (same idea as MVP).
+    """
+    adv = pd.read_parquet(AWARDS_DATA / "advanced_full.parquet")
+    votes = pd.read_parquet(AWARDS_DATA / "award_votes.parquet")
+    roy = votes.loc[votes["award"] == "ROY", ["season_id", "bbref_id", "share"]]
+
+    df = adv[adv["is_rookie"] & adv["season_id"].isin(roy["season_id"].unique())]
+    df = df.merge(roy, on=["season_id", "bbref_id"], how="left")
+    df["share"] = df["share"].fillna(0.0)
+    df["gp_pct"] = df["games"] / df["season_games"]
+    df["draft_pick_capped"] = df["draft_pick"].clip(upper=UNDRAFTED_PICK).fillna(UNDRAFTED_PICK)
+    df["in_eval_pool"] = df["mp"] * 82 / df["season_games"] >= ROY_MIN_MINUTES_82
+    df = df[df["in_eval_pool"] | (df["share"] > 0)]
+    return df.rename(columns={"bbref_id": "player_id"}).reset_index(drop=True)
+
+
+ROY_TRADITIONAL = ["pts_per_g", "mp_per_g", "gp_pct", "draft_pick_capped"]
+ROY_IMPACT = ["ts_pct", "bpm", "vorp", "team_win_pct"]
+
 SPECS: dict[str, AwardSpec] = {
     "mvp": AwardSpec("MVP", load_mvp, m1.FEATURES, "Most Valuable Player (reproduces Model 1)"),
+    "roy_traditional": AwardSpec("ROY_Traditional", load_roy, ROY_TRADITIONAL,
+                                 "ROY Model 1 - traditional voter: scoring, minutes, games, draft pick"),
+    "roy_impact": AwardSpec("ROY_Impact", load_roy, ROY_IMPACT,
+                            "ROY Model 2 - advanced impact: efficiency, BPM, VORP, team success"),
 }
 
 

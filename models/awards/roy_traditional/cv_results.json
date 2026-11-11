@@ -1,0 +1,111 @@
+{
+  "award": "ROY_Traditional",
+  "config": {
+    "lam": 0.03,
+    "depth": 3,
+    "n_est": 300,
+    "w_linear": 0.75
+  },
+  "loso": {
+    "LINEAR": {
+      "seasons": 47,
+      "winner_acc": 0.7021276595744681,
+      "winner_in_top3": 0.9574468085106383,
+      "top5_overlap": 0.8170212765957446,
+      "voter_spearman": 0.6089549460613706
+    },
+    "XGB": {
+      "seasons": 47,
+      "winner_acc": 0.5957446808510638,
+      "winner_in_top3": 0.9361702127659575,
+      "top5_overlap": 0.7914893617021277,
+      "voter_spearman": 0.5619933149404263
+    },
+    "BLEND": {
+      "seasons": 47,
+      "winner_acc": 0.6808510638297872,
+      "winner_in_top3": 0.9574468085106383,
+      "top5_overlap": 0.8170212765957446,
+      "voter_spearman": 0.6175824515526819
+    }
+  },
+  "misses": [
+    [
+      1980,
+      "Larry Bird",
+      "Bill Cartwright"
+    ],
+    [
+      1981,
+      "Darrell Griffith",
+      "Joe Barry Carroll"
+    ],
+    [
+      1982,
+      "Buck Williams",
+      "Kelly Tripucka"
+    ],
+    [
+      1987,
+      "Chuck Person",
+      "Ron Harper"
+    ],
+    [
+      1988,
+      "Mark Jackson",
+      "Kenny Smith"
+    ],
+    [
+      1994,
+      "Chris Webber",
+      "Jamal Mashburn"
+    ],
+    [
+      1995,
+      "Grant Hill & Jason Kidd",
+      "Glenn Robinson"
+    ],
+    [
+      2001,
+      "Mike Miller",
+      "Kenyon Martin"
+    ],
+    [
+      2003,
+      "Amar'e Stoudemire",
+      "Yao Ming"
+    ],
+    [
+      2009,
+      "Derrick Rose",
+      "O.J. Mayo"
+    ],
+    [
+      2017,
+      "Malcolm Brogdon",
+      "Joel Embiid"
+    ],
+    [
+      2018,
+      "Ben Simmons",
+      "Donovan Mitchell"
+    ],
+    [
+      2020,
+      "Ja Morant",
+      "Zion Williamson"
+    ],
+    [
+      2021,
+      "LaMelo Ball",
+      "Anthony Edwards"
+    ],
+    [
+      2025,
+      "Stephon Castle",
+      "Zaccharie Risacher"
+    ]
+  ],
+  "n_rows": 1633,
+  "n_seasons": 47
+}

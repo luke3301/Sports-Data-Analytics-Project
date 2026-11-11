@@ -9,8 +9,8 @@ award, a new column) needs no re-download.
 
 Outputs (data/processed/awards/):
   award_votes.parquet           one row per season x award x vote-getter (MVP, ROY, DPOY, 6MOY, MIP, Clutch)
-  advanced_full.parquet         one row per player-season: every bbref advanced column + bbref_id,
-                                is_rookie, nba_player_id
+  advanced_full.parquet         one row per player-season: every bbref advanced column, per-game box
+                                score (pts_per_g, mp_per_g, ...), bbref_id, is_rookie, nba_player_id
   rookies.parquet               bbref's official rookie list per season, cross-checked with NBA.com (1997+)
   player_crosswalk.parquet      bbref_id <-> nba_api PLAYER_ID (players with 1996-97+ seasons)
   drafts.parquet                every draft 1976+: bbref_id, draft year, overall pick
@@ -43,6 +43,7 @@ BBREF = "https://www.basketball-reference.com"
 PAGES = {
     "awards": BBREF + "/awards/awards_{season}.html",
     "advanced": BBREF + "/leagues/NBA_{season}_advanced.html",
+    "per_game": BBREF + "/leagues/NBA_{season}_per_game.html",
     "rookies": BBREF + "/leagues/NBA_{season}_rookies.html",
     "draft": BBREF + "/draft/NBA_{season}.html",            # {season} = draft year
     "ratings": BBREF + "/leagues/NBA_{season}_ratings.html",
@@ -177,13 +178,11 @@ def parse_award_votes(season: int, html: str) -> pd.DataFrame:
     return votes
 
 
-def parse_advanced(season: int, html: str) -> pd.DataFrame:
-    """One row per player-season. Traded players keep their combined (TOT / 2TM) row, with the
-    team set to their last stint and the number of teams recorded."""
-    tables = all_tables(html)
-    df = pd.DataFrame(table_rows(tables["advanced"]))
+def _one_row_per_player(df: pd.DataFrame, season: int) -> pd.DataFrame:
+    """Season tables list traded players once per team plus a combined (TOT / 2TM) row. Keep the
+    combined row, set its team to the last stint, record the number of teams, convert stats to numbers."""
     df = df.rename(columns={"name_display": "player", "team_name_abbr": "team", "team_id": "team"})
-    df = df.drop(columns=[c for c in ("ranker", "awards") if c in df.columns])
+    df = df.drop(columns=[c for c in ("ranker", "awards", "team_abbr") if c in df.columns])
     df["season_id"] = season
 
     is_total = df["team"].astype(str).str.fullmatch(TOTAL_TEAM.pattern)
@@ -198,6 +197,21 @@ def parse_advanced(season: int, html: str) -> pd.DataFrame:
     for col in df.columns.difference(["bbref_id", "player", "team", "pos", "season_id", "n_teams"]):
         df[col] = _num(df[col])
     return df.reset_index(drop=True)
+
+
+def parse_advanced(season: int, html: str) -> pd.DataFrame:
+    """One row per player-season of bbref's advanced table (traded players: combined row, last team)."""
+    return _one_row_per_player(pd.DataFrame(table_rows(all_tables(html)["advanced"])), season)
+
+
+PER_GAME_COLS = ["pts_per_g", "mp_per_g", "trb_per_g", "ast_per_g", "stl_per_g", "blk_per_g", "tov_per_g",
+                 "fg_pct", "fg3_pct", "ft_pct", "efg_pct"]
+
+
+def parse_per_game(season: int, html: str) -> pd.DataFrame:
+    """Per-game box score (points, minutes, ...) for each player-season, keyed by bbref_id."""
+    df = _one_row_per_player(pd.DataFrame(table_rows(all_tables(html)["per_game_stats"])), season)
+    return df[["season_id", "bbref_id"] + [c for c in PER_GAME_COLS if c in df.columns]]
 
 
 def parse_rookies(season: int, html: str) -> pd.DataFrame:
@@ -313,7 +327,7 @@ def build_crosswalk(adv: pd.DataFrame) -> pd.DataFrame:
 
 # --------------------------------------------------------------------------- build
 def build(start: int, end: int, refresh: bool = False):
-    votes, adv, rookies, drafts, ratings = [], [], [], [], []
+    votes, adv, per_game, rookies, drafts, ratings = [], [], [], [], [], []
     for year in range(min(start, FIRST_DRAFT), end + 1):  # drafts start earlier than seasons
         html = fetch_html("draft", year, refresh)
         if html:
@@ -326,6 +340,9 @@ def build(start: int, end: int, refresh: bool = False):
         html = fetch_html("advanced", season, refresh)
         if html:
             adv.append(parse_advanced(season, html))
+        html = fetch_html("per_game", season, refresh)
+        if html:
+            per_game.append(parse_per_game(season, html))
         html = fetch_html("rookies", season, refresh)
         if html:
             rookies.append(parse_rookies(season, html))
@@ -341,6 +358,11 @@ def build(start: int, end: int, refresh: bool = False):
     rookies = pd.concat(rookies, ignore_index=True)
     drafts = pd.concat(drafts, ignore_index=True)
     ratings = pd.concat(ratings, ignore_index=True)
+
+    # Per-game box score, and the season's schedule length (lockouts/bubble: 50, 66, 72 ... 82 games)
+    adv = adv.merge(pd.concat(per_game, ignore_index=True), on=["season_id", "bbref_id"], how="left")
+    season_games = (ratings["team_wins"] + ratings["team_losses"]).groupby(ratings["season_id"]).max()
+    adv["season_games"] = adv["season_id"].map(season_games)
 
     # Draft context: a player's most recent draft (a few re-entered the draft)
     last_draft = drafts.sort_values("draft_year").drop_duplicates("bbref_id", keep="last")
