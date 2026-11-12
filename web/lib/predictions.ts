@@ -1,7 +1,9 @@
 import { cacheLife } from "next/cache";
 import { db, seasonLabel } from "@/lib/db";
+import { INSIGHT_COLUMNS, parseInsight, type Insight, type InsightRow } from "@/lib/insights";
 
 export type Prediction = {
+  insight: Insight; // summary, rank change, last 3 games (top of the race only)
   playerId: string;
   player: string;
   team: string | null;
@@ -13,6 +15,8 @@ export type Prediction = {
   mvpIndex: number | null; // unbounded MVP Dominance Index ("Dominance Score" in the UI)
   // Season-to-date box score context (null for days saved before these columns existed)
   pts: number | null;
+  reb: number | null; // season per-game rebounds
+  ast: number | null; // season per-game assists
   mpg: number | null;
   tsPct: number | null; // true shooting as a fraction (0.62 = 62%)
   bpm: number | null;
@@ -30,7 +34,7 @@ export type PredictionDay = {
   players: Prediction[];
 };
 
-type Row = {
+type Row = InsightRow & {
   prediction_date: string;
   season_id: number;
   player_id: string;
@@ -43,6 +47,8 @@ type Row = {
   model2_share: number | null;
   mvp_index: number | null;
   pts: number | null;
+  reb: number | null;
+  ast: number | null;
   mpg: number | null;
   ts_pct: number | null;
   bpm: number | null;
@@ -72,7 +78,7 @@ export async function queryPredictions({
   const rows = (await conn.execute(
     `SELECT prediction_date, season_id, player_id, player, team,
             model1_rank, model1_score, model1_share, model2_rank, model2_share, mvp_index,
-            pts, mpg, ts_pct, bpm, vorp
+            pts, reb, ast, mpg, ts_pct, bpm, vorp, ${INSIGHT_COLUMNS}
        FROM daily_predictions
       WHERE prediction_date = ?
       ORDER BY ${ORDER_BY[sort]}
@@ -89,6 +95,7 @@ export async function queryPredictions({
     count: rows.length,
     players: rows.map((r) => ({
       playerId: String(r.player_id),
+      insight: parseInsight(r),
       player: r.player,
       team: r.team,
       model1Rank: num(r.model1_rank),
@@ -98,6 +105,8 @@ export async function queryPredictions({
       model2Share: num(r.model2_share),
       mvpIndex: num(r.mvp_index),
       pts: num(r.pts),
+      reb: num(r.reb),
+      ast: num(r.ast),
       mpg: num(r.mpg),
       tsPct: num(r.ts_pct),
       bpm: num(r.bpm),

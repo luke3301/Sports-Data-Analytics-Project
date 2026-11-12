@@ -1,11 +1,13 @@
 import { cacheLife } from "next/cache";
 import { db, seasonLabel } from "@/lib/db";
+import { INSIGHT_COLUMNS, parseInsight, type Insight, type InsightRow } from "@/lib/insights";
 
 // Rookie of the Year race (daily_roy_predictions, written by award_inference.py via db_sync.py).
 //   Model 1 = Traditional Voter (roy_traditional): scoring, minutes, games, draft slot
 //   Model 2 = Combined Impact   (roy_combined):    traditional + BPM and team win %
 
 export type RookiePrediction = {
+  insight: Insight; // summary, rank change, last 3 games (top of the race only)
   playerId: string; // Basketball-Reference player id
   player: string;
   team: string | null; // Basketball-Reference code (BRK, CHO, PHO): display via lib/teams
@@ -16,6 +18,8 @@ export type RookiePrediction = {
   model2Score: number | null;
   model2Share: number | null;
   pts: number | null;
+  reb: number | null; // season per-game rebounds
+  ast: number | null; // season per-game assists
   mpg: number | null;
   games: number | null;
   tsPct: number | null; // fraction (0.62 = 62%)
@@ -27,11 +31,11 @@ export type RookiePrediction = {
 
 export type RoyDay = { date: string; seasonId: number; season: string; count: number; players: RookiePrediction[] };
 
-type Row = {
+type Row = InsightRow & {
   prediction_date: string; season_id: number; player_id: string; player: string; team: string | null;
   model1_rank: number | null; model1_score: number | null; model1_share: number | null;
   model2_rank: number | null; model2_score: number | null; model2_share: number | null;
-  pts: number | null; mpg: number | null; games: number | null; ts_pct: number | null;
+  pts: number | null; reb: number | null; ast: number | null; mpg: number | null; games: number | null; ts_pct: number | null;
   bpm: number | null; vorp: number | null; draft_pick: number | null; team_win_pct: number | null;
 };
 
@@ -49,7 +53,7 @@ export async function queryRoy({ date, limit }: { date?: string; limit?: number 
   const rows = (await conn.execute(
     `SELECT prediction_date, season_id, player_id, player, team,
             model1_rank, model1_score, model1_share, model2_rank, model2_score, model2_share,
-            pts, mpg, games, ts_pct, bpm, vorp, draft_pick, team_win_pct
+            pts, reb, ast, mpg, games, ts_pct, bpm, vorp, draft_pick, team_win_pct, ${INSIGHT_COLUMNS}
        FROM daily_roy_predictions
       WHERE prediction_date = ?
       ORDER BY model1_rank IS NULL, model1_rank
@@ -66,6 +70,7 @@ export async function queryRoy({ date, limit }: { date?: string; limit?: number 
     count: rows.length,
     players: rows.map((r) => ({
       playerId: String(r.player_id),
+      insight: parseInsight(r),
       player: r.player,
       team: r.team,
       model1Rank: num(r.model1_rank),
@@ -75,6 +80,8 @@ export async function queryRoy({ date, limit }: { date?: string; limit?: number 
       model2Score: num(r.model2_score),
       model2Share: num(r.model2_share),
       pts: num(r.pts),
+      reb: num(r.reb),
+      ast: num(r.ast),
       mpg: num(r.mpg),
       games: num(r.games),
       tsPct: num(r.ts_pct),

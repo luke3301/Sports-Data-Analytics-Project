@@ -9,9 +9,11 @@ export const metadata: Metadata = {
 };
 
 const pick = (v: number | null) => (v === null ? "Undrafted" : `#${v}`);
+const seasonLine = (p: RookiePrediction) =>
+  `${one(p.pts)} PTS · ${one(p.reb)} REB · ${one(p.ast)} AST · ${one(p.mpg)} MPG · ${int(p.games)} GP · ${pct(p.tsPct)} TS · ${signed(p.bpm)} BPM · pick ${pick(p.draftPick)}`;
 
 export default async function RoyPage() {
-  const day = await getLatestRoy(10);
+  const day = await getLatestRoy(5);
   const leader = day?.players[0];
 
   return (
@@ -23,12 +25,12 @@ export default async function RoyPage() {
       footer={
         <>
           <p>
-            Rankings come from <span className="text-zinc-400">Model 1 (Traditional Voter)</span>, trained on Rookie of
+            Rankings come from <span className="font-medium text-ink">Model 1 (Traditional Voter)</span>, trained on Rookie of
             the Year voting since 1980 using what voters reward most: scoring, minutes, games played and draft slot.{" "}
-            <span className="text-zinc-400">Vote Share</span> is its predicted fraction of ROY voting points.
+            <span className="font-medium text-ink">Vote Share</span> is its predicted fraction of ROY voting points.
           </p>
           <p>
-            <span className="text-zinc-400">Model 2 (Combined Impact)</span> adds efficiency and team success (BPM and
+            <span className="font-medium text-ink">Model 2 (Combined Impact)</span> adds efficiency and team success (BPM and
             team win %) and is shown for comparison. Rookies must have played at least half the season&apos;s games.
             Stats are season-to-date per game. Updated nightly; early in the season, small samples make rankings
             volatile.
@@ -41,7 +43,11 @@ export default async function RoyPage() {
           badge="#1 · Projected Rookie of the Year"
           badgeShort="#1 · Projected ROY"
           player={leader.player}
+          playerId={leader.playerId}
+          award="roy"
           team={leader.team}
+          insight={leader.insight}
+          seasonLine={seasonLine(leader)}
           stats={[
             { label: "Projected Vote Share", value: pct(leader.model1Share) },
             { label: "Traditional Score", value: one(leader.model1Score) },
@@ -54,14 +60,17 @@ export default async function RoyPage() {
       )}
       {day && day.players.length > 1 && (
         <RaceTable<RookiePrediction>
-          title="The rest of the top 10"
+          title="The rest of the top 5"
+          award="roy"
           rows={day.players.slice(1)}
           rowKey={(p) => p.playerId}
           rank={(p) => p.model1Rank}
           player={(p) => p.player}
           team={(p) => p.team}
+          insight={(p) => p.insight}
+          seasonLine={seasonLine}
           columns={[
-            { header: "Vote Share", cell: (p) => pct(p.model1Share), tone: "primary" },
+            { header: "Vote Share", width: "5.6rem", cell: (p) => pct(p.model1Share), tone: "primary" },
             { header: "Score", cell: (p) => one(p.model1Score), tone: "primary" },
             { header: "PTS", cell: (p) => one(p.pts) },
             { header: "MPG", cell: (p) => one(p.mpg), tone: "muted", wideOnly: true },

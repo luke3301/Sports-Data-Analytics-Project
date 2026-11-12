@@ -1,11 +1,13 @@
 import { cacheLife } from "next/cache";
 import { db, seasonLabel } from "@/lib/db";
+import { INSIGHT_COLUMNS, parseInsight, type Insight, type InsightRow } from "@/lib/insights";
 
 // Defensive Player of the Year race (daily_dpoy_predictions, written by award_inference.py via db_sync.py).
 //   Model 1 = Traditional Voter (dpoy_traditional): reputation, center, top-5 team defense, BLK/STL/REB
 //   Model 2 = Advanced Impact   (dpoy_impact):      DBPM, DWS, BLK%, STL%, DRB%
 
 export type DefenderPrediction = {
+  insight: Insight; // summary, rank change, last 3 games (top of the race only)
   playerId: string; // Basketball-Reference player id
   player: string;
   team: string | null; // Basketball-Reference code (BRK, CHO, PHO): display via lib/teams
@@ -19,6 +21,7 @@ export type DefenderPrediction = {
   blk: number | null; // per game
   stl: number | null;
   reb: number | null;
+  ast: number | null; // season per-game assists
   dws: number | null;
   dbpm: number | null;
   teamDrtgRank: number | null; // 1 = best team defense
@@ -29,11 +32,11 @@ export type DefenderPrediction = {
 
 export type DpoyDay = { date: string; seasonId: number; season: string; count: number; players: DefenderPrediction[] };
 
-type Row = {
+type Row = InsightRow & {
   prediction_date: string; season_id: number; player_id: string; player: string; team: string | null; pos: string | null;
   model1_rank: number | null; model1_score: number | null; model1_share: number | null;
   model2_rank: number | null; model2_score: number | null; model2_share: number | null;
-  blk_per_g: number | null; stl_per_g: number | null; trb_per_g: number | null; dws: number | null; dbpm: number | null;
+  blk_per_g: number | null; stl_per_g: number | null; trb_per_g: number | null; ast_per_g: number | null; dws: number | null; dbpm: number | null;
   team_drtg_rank: number | null; prev_dpoy_share: number | null; games: number | null; mpg: number | null;
 };
 
@@ -51,7 +54,7 @@ export async function queryDpoy({ date, limit }: { date?: string; limit?: number
   const rows = (await conn.execute(
     `SELECT prediction_date, season_id, player_id, player, team, pos,
             model1_rank, model1_score, model1_share, model2_rank, model2_score, model2_share,
-            blk_per_g, stl_per_g, trb_per_g, dws, dbpm, team_drtg_rank, prev_dpoy_share, games, mpg
+            blk_per_g, stl_per_g, trb_per_g, ast_per_g, dws, dbpm, team_drtg_rank, prev_dpoy_share, games, mpg, ${INSIGHT_COLUMNS}
        FROM daily_dpoy_predictions
       WHERE prediction_date = ?
       ORDER BY model1_rank IS NULL, model1_rank
@@ -68,6 +71,7 @@ export async function queryDpoy({ date, limit }: { date?: string; limit?: number
     count: rows.length,
     players: rows.map((r) => ({
       playerId: String(r.player_id),
+      insight: parseInsight(r),
       player: r.player,
       team: r.team,
       pos: r.pos,
@@ -80,6 +84,7 @@ export async function queryDpoy({ date, limit }: { date?: string; limit?: number
       blk: num(r.blk_per_g),
       stl: num(r.stl_per_g),
       reb: num(r.trb_per_g),
+      ast: num(r.ast_per_g),
       dws: num(r.dws),
       dbpm: num(r.dbpm),
       teamDrtgRank: num(r.team_drtg_rank),

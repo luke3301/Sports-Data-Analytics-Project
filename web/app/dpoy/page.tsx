@@ -8,8 +8,11 @@ export const metadata: Metadata = {
   description: "Who is the NBA Defensive Player of the Year right now? Daily machine-learning predictions.",
 };
 
+const seasonLine = (p: DefenderPrediction) =>
+  `${one(p.blk)} BLK · ${one(p.stl)} STL · ${one(p.reb)} REB · ${one(p.ast)} AST · ${signed(p.dbpm)} DBPM · ${one(p.dws)} DWS · team defense ${rank(p.teamDrtgRank)}`;
+
 export default async function DpoyPage() {
-  const day = await getLatestDpoy(10);
+  const day = await getLatestDpoy(5);
   const leader = day?.players[0];
 
   return (
@@ -21,13 +24,13 @@ export default async function DpoyPage() {
       footer={
         <>
           <p>
-            Rankings come from <span className="text-zinc-400">Model 1 (Traditional Voter)</span>, trained on DPOY
+            Rankings come from <span className="font-medium text-ink">Model 1 (Traditional Voter)</span>, trained on DPOY
             voting since 1983 using what voters reward: reputation (last season&apos;s DPOY votes), anchoring a top-5
-            team defense, and blocks, steals and rebounds. <span className="text-zinc-400">Vote Share</span> is its
+            team defense, and blocks, steals and rebounds. <span className="font-medium text-ink">Vote Share</span> is its
             predicted fraction of DPOY voting points.
           </p>
           <p>
-            <span className="text-zinc-400">Model 2 (Advanced Impact)</span> looks for the most impactful defender by
+            <span className="font-medium text-ink">Model 2 (Advanced Impact)</span> looks for the most impactful defender by
             defensive box plus/minus, defensive win shares and block, steal and rebound rates, and is shown for
             comparison. Candidates must meet a pro-rated version of the NBA&apos;s 65-game rule and play 20+ minutes per
             game. Updated nightly; early in the season, small samples make rankings volatile.
@@ -40,7 +43,11 @@ export default async function DpoyPage() {
           badge="#1 · Projected Defensive Player of the Year"
           badgeShort="#1 · Projected DPOY"
           player={leader.player}
+          playerId={leader.playerId}
+          award="dpoy"
           team={leader.team}
+          insight={leader.insight}
+          seasonLine={seasonLine(leader)}
           stats={[
             { label: "Projected Vote Share", value: pct(leader.model1Share) },
             { label: "Traditional Score", value: one(leader.model1Score) },
@@ -53,19 +60,23 @@ export default async function DpoyPage() {
       )}
       {day && day.players.length > 1 && (
         <RaceTable<DefenderPrediction>
-          title="The rest of the top 10"
+          title="The rest of the top 5"
+          award="dpoy"
           rows={day.players.slice(1)}
           rowKey={(p) => p.playerId}
           rank={(p) => p.model1Rank}
           player={(p) => p.player}
           team={(p) => p.team}
+          insight={(p) => p.insight}
+          seasonLine={seasonLine}
           columns={[
-            { header: "Vote Share", cell: (p) => pct(p.model1Share), tone: "primary" },
+            { header: "Vote Share", width: "5.6rem", cell: (p) => pct(p.model1Share), tone: "primary" },
             { header: "Score", cell: (p) => one(p.model1Score), tone: "primary" },
             { header: "BLK", cell: (p) => one(p.blk) },
             { header: "STL", cell: (p) => one(p.stl) },
             { header: "REB", cell: (p) => one(p.reb), tone: "muted", wideOnly: true },
             { header: "DBPM", cell: (p) => signed(p.dbpm) },
+            { header: "DWS", cell: (p) => one(p.dws), tone: "muted", wideOnly: true },
             { header: "Team D", cell: (p) => rank(p.teamDrtgRank), tone: "muted", wideOnly: true },
             { header: "Model 2", cell: (p) => rank(p.model2Rank), comparison: true },
           ]}

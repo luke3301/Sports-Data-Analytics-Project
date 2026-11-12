@@ -288,6 +288,16 @@ def main():
                 award_error = f"saving ROY/DPOY failed: {type(e).__name__}: {e}"
                 print(f"!! {award_error}")
 
+        # Insights for the players shown on the site (recent games, summaries) + the NBA.com MVP ladder.
+        # Isolated like the awards: a failure here is reported but never undoes the saved predictions.
+        try:
+            from insights import build_and_save
+            lines = build_and_save(engine, a.season, pool, awards, refresh=refresh)
+            print("\nInsights saved:\n" + "\n".join(lines))
+        except Exception as e:  # noqa: BLE001
+            award_error = (award_error + "; " if award_error else "") + f"insights failed: {type(e).__name__}: {e}"
+            print(f"!! insights failed: {e}")
+
     if award_error:
         raise SystemExit(f"\nERROR (MVP results were still produced{' and saved' if a.save_db else ''}): {award_error}")
 

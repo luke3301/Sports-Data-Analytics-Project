@@ -6,6 +6,10 @@ Tables (created if missing):
   daily_predictions       live MVP race snapshots from compare_models.py, one row per player per day
   daily_roy_predictions   live Rookie of the Year race (rookies only), one row per rookie per day
   daily_dpoy_predictions  live Defensive Player of the Year race, one row per candidate per day
+  nba_mvp_ladder          the official NBA.com Kia MVP Ladder Top 10 (insights.fetch_mvp_ladder)
+The three daily tables also carry insights for the players shown on the site (insights.py):
+summary (1-2 sentences), rank_change (vs the previous saved day; + = climbed) and recent_games
+(JSON list of the last 3 games' box scores).
 ROY and DPOY rows come from award_inference.py; player_id there is the bbref player id.
 
 Usage:
@@ -19,6 +23,7 @@ TiDB Serverless requires TLS; if the URL has no ssl_* options, the certifi CA bu
 from __future__ import annotations
 
 import argparse
+import json
 import os
 from datetime import date
 from pathlib import Path
@@ -26,7 +31,7 @@ from pathlib import Path
 import certifi
 import pandas as pd
 from dotenv import load_dotenv
-from sqlalchemy import (Boolean, Column, Date, DateTime, Double, Integer, MetaData, String, Table,
+from sqlalchemy import (Boolean, Column, Date, DateTime, Double, Integer, MetaData, String, Table, Text,
                         UniqueConstraint, create_engine, delete, func, insert, inspect, select, text)
 from sqlalchemy.engine import Engine, make_url
 
@@ -68,7 +73,12 @@ daily_predictions = Table(
     Column("ts_pct", Double),          # true shooting, as a fraction (0.62 = 62%)
     Column("bpm", Double),
     Column("vorp", Double),
+    Column("reb", Double),             # season per-game rebounds
+    Column("ast", Double),             # season per-game assists
     Column("is_rookie", Boolean),
+    Column("summary", Text),
+    Column("rank_change", Integer),
+    Column("recent_games", Text),      # JSON
     Column("created_at", DateTime, server_default=text("CURRENT_TIMESTAMP")),
     UniqueConstraint("prediction_date", "season_id", "player_id", name="uq_daily_date_season_player"),
     mysql_charset="utf8mb4",
@@ -98,6 +108,11 @@ daily_roy_predictions = Table(
     Column("vorp", Double),
     Column("draft_pick", Integer),     # null = undrafted
     Column("team_win_pct", Double),
+    Column("reb", Double),             # season per-game rebounds
+    Column("ast", Double),             # season per-game assists
+    Column("summary", Text),
+    Column("rank_change", Integer),
+    Column("recent_games", Text),      # JSON
     Column("created_at", DateTime, server_default=text("CURRENT_TIMESTAMP")),
     UniqueConstraint("prediction_date", "season_id", "player_id", name="uq_roy_date_season_player"),
     mysql_charset="utf8mb4",
@@ -121,6 +136,7 @@ daily_dpoy_predictions = Table(
     Column("blk_per_g", Double),
     Column("stl_per_g", Double),
     Column("trb_per_g", Double),
+    Column("ast_per_g", Double),
     Column("dws", Double),
     Column("dbpm", Double),
     Column("blk_pct", Double),
@@ -130,8 +146,28 @@ daily_dpoy_predictions = Table(
     Column("prev_dpoy_share", Double),
     Column("games", Integer),
     Column("mpg", Double),
+    Column("summary", Text),
+    Column("rank_change", Integer),
+    Column("recent_games", Text),      # JSON
     Column("created_at", DateTime, server_default=text("CURRENT_TIMESTAMP")),
     UniqueConstraint("prediction_date", "season_id", "player_id", name="uq_dpoy_date_season_player"),
+    mysql_charset="utf8mb4",
+)
+
+nba_mvp_ladder = Table(
+    "nba_mvp_ladder", metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("ladder_date", Date, nullable=False, index=True),   # the article's publish date
+    Column("season_id", Integer, nullable=False),
+    Column("ladder_rank", Integer, nullable=False),
+    Column("player", String(64), nullable=False),
+    Column("team", String(64)),                               # full team name, as NBA.com writes it
+    Column("player_id", String(32)),                          # NBA.com id matched to daily_predictions (nullable)
+    Column("author", String(128)),
+    Column("title", String(255)),
+    Column("url", String(512)),
+    Column("fetched_at", DateTime, server_default=text("CURRENT_TIMESTAMP")),
+    UniqueConstraint("ladder_date", "ladder_rank", name="uq_ladder_date_rank"),
     mysql_charset="utf8mb4",
 )
 
@@ -157,10 +193,12 @@ def get_engine() -> Engine:
 # create_all() only creates missing tables; columns added to daily_predictions after it was first
 # created are added here (nullable, so existing rows are untouched).
 ADDED_DAILY_COLUMNS = {"pts": "DOUBLE", "mpg": "DOUBLE", "ts_pct": "DOUBLE", "bpm": "DOUBLE", "vorp": "DOUBLE",
-                       "is_rookie": "BOOLEAN"}
+                       "is_rookie": "BOOLEAN", "reb": "DOUBLE", "ast": "DOUBLE"}
 # Columns added to daily_roy_predictions when the trained two-model ROY output replaced the boilerplate
 ADDED_ROY_COLUMNS = {"model1_rank": "INTEGER", "model2_rank": "INTEGER", "model2_score": "DOUBLE",
-                     "games": "INTEGER", "draft_pick": "INTEGER", "team_win_pct": "DOUBLE"}
+                     "games": "INTEGER", "draft_pick": "INTEGER", "team_win_pct": "DOUBLE",
+                     "reb": "DOUBLE", "ast": "DOUBLE"}
+ADDED_DPOY_COLUMNS = {"ast_per_g": "DOUBLE"}
 
 
 def ensure_columns(engine: Engine, table: Table, added_columns: dict[str, str]) -> list[str]:
@@ -176,6 +214,10 @@ def ensure_columns(engine: Engine, table: Table, added_columns: dict[str, str]) 
 
 def ensure_daily_columns(engine: Engine) -> list[str]:
     return ensure_columns(engine, daily_predictions, ADDED_DAILY_COLUMNS)
+
+
+INSIGHT_COLUMNS = {"summary": "TEXT", "rank_change": "INTEGER", "recent_games": "TEXT"}
+AWARD_TABLES = {"mvp": daily_predictions, "roy": daily_roy_predictions, "dpoy": daily_dpoy_predictions}
 
 
 def _int(v) -> int | None:
@@ -221,7 +263,7 @@ def write_daily_predictions(engine: Engine, pool: pd.DataFrame, season_id: int,
          "model2_rank": int(r.M2_RANK), "model2_share": float(r.M2_SHARE),
          "mvp_index": _float(r.MVP_INDEX),
          "pts": _float(r.PTS), "mpg": _float(r.MPG), "ts_pct": _float(r.TS_PCT),
-         "bpm": _float(r.BPM), "vorp": _float(r.VORP),
+         "bpm": _float(r.BPM), "vorp": _float(r.VORP), "reb": _float(r.REB), "ast": _float(r.AST),
          "is_rookie": bool(r.IS_ROOKIE) if hasattr(r, "IS_ROOKIE") else None}
         for r in pool.itertuples(index=False)
     ]
@@ -262,7 +304,8 @@ def write_daily_roy(engine: Engine, roy: pd.DataFrame, season_id: int,
          "roy_rank": _int(r.m1_rank), **_model_cols(r),
          "pts": _float(r.pts_per_g), "mpg": _float(r.mp_per_g), "games": _int(r.games),
          "ts_pct": _float(r.ts_pct), "bpm": _float(r.bpm), "vorp": _float(r.vorp),
-         "draft_pick": _int(r.draft_pick), "team_win_pct": _float(r.team_win_pct)}
+         "draft_pick": _int(r.draft_pick), "team_win_pct": _float(r.team_win_pct),
+         "reb": _float(r.trb_per_g), "ast": _float(r.ast_per_g)}
         for r in roy.itertuples(index=False)
     ]
     return _replace_day(engine, daily_roy_predictions, rows, season_id, prediction_date)
@@ -272,12 +315,15 @@ def write_daily_dpoy(engine: Engine, dpoy: pd.DataFrame, season_id: int,
                      prediction_date: date | None = None) -> int:
     """Store one day's Defensive Player of the Year race (award_inference.predict_award("dpoy", ...))."""
     prediction_date = prediction_date or date.today()
-    metadata.create_all(engine, tables=[daily_dpoy_predictions])  # no-op if it already exists
+    added = ensure_columns(engine, daily_dpoy_predictions, ADDED_DPOY_COLUMNS)
+    if added:
+        print(f"daily_dpoy_predictions: added columns {added}")
     rows = [
         {"prediction_date": prediction_date, "season_id": int(season_id),
          "player_id": str(r.bbref_id), "player": str(r.player), "team": str(r.team), "pos": str(r.pos),
          **_model_cols(r),
          "blk_per_g": _float(r.blk_per_g), "stl_per_g": _float(r.stl_per_g), "trb_per_g": _float(r.trb_per_g),
+         "ast_per_g": _float(r.ast_per_g),
          "dws": _float(r.dws), "dbpm": _float(r.dbpm), "blk_pct": _float(r.blk_pct),
          "stl_pct": _float(r.stl_pct), "drb_pct": _float(r.drb_pct),
          "team_drtg_rank": _int(r.team_drtg_rank), "prev_dpoy_share": _float(r.prev_dpoy_share),
@@ -287,10 +333,57 @@ def write_daily_dpoy(engine: Engine, dpoy: pd.DataFrame, season_id: int,
     return _replace_day(engine, daily_dpoy_predictions, rows, season_id, prediction_date)
 
 
+def previous_ranks(engine: Engine, award: str, rank_col: str, season_id: int,
+                   before: date) -> tuple[bool, dict[str, int]]:
+    """(had_prior_day, {player_id: rank}) from the latest saved day before `before`."""
+    table = AWARD_TABLES[award]
+    with engine.connect() as conn:
+        prior = conn.execute(select(func.max(table.c.prediction_date)).where(
+            (table.c.prediction_date < before) & (table.c.season_id == int(season_id)))).scalar()
+        if prior is None:
+            return False, {}
+        rows = conn.execute(select(table.c.player_id, table.c[rank_col]).where(
+            (table.c.prediction_date == prior) & (table.c.season_id == int(season_id)))).all()
+    return True, {str(pid): int(r) for pid, r in rows if r is not None}
+
+
+def write_insights(engine: Engine, award: str, insights: list[dict], season_id: int,
+                   prediction_date: date | None = None) -> int:
+    """Attach summary / rank_change / recent_games to that day's rows (one UPDATE per player shown)."""
+    prediction_date = prediction_date or date.today()
+    table = AWARD_TABLES[award]
+    added = ensure_columns(engine, table, INSIGHT_COLUMNS)
+    if added:
+        print(f"{table.name}: added columns {added}")
+    with engine.begin() as conn:
+        for ins in insights:
+            conn.execute(table.update().where(
+                (table.c.prediction_date == prediction_date) & (table.c.season_id == int(season_id))
+                & (table.c.player_id == str(ins["player_id"]))
+            ).values(summary=ins["summary"], rank_change=ins["rank_change"],
+                     recent_games=json.dumps(ins["recent_games"])))
+    return len(insights)
+
+
+def write_mvp_ladder(engine: Engine, ladder: dict, season_id: int, player_ids: dict[int, str | None]) -> int:
+    """Store one NBA.com ladder edition (replaces that edition's rows if re-run)."""
+    metadata.create_all(engine, tables=[nba_mvp_ladder])
+    ladder_date = date.fromisoformat(ladder["date"][:10])
+    rows = [{"ladder_date": ladder_date, "season_id": int(season_id), "ladder_rank": e["rank"],
+             "player": e["player"], "team": e["team"], "player_id": player_ids.get(e["rank"]),
+             "author": ladder.get("author"), "title": ladder["title"][:255], "url": ladder["url"]}
+            for e in ladder["entries"]]
+    with engine.begin() as conn:
+        conn.execute(delete(nba_mvp_ladder).where(nba_mvp_ladder.c.ladder_date == ladder_date))
+        conn.execute(insert(nba_mvp_ladder), rows)
+    return len(rows)
+
+
 def row_counts(engine: Engine) -> dict[str, int]:
     with engine.connect() as conn:
         return {t.name: conn.execute(select(func.count()).select_from(t)).scalar_one()
-                for t in (historical_mvp, daily_predictions, daily_roy_predictions, daily_dpoy_predictions)}
+                for t in (historical_mvp, daily_predictions, daily_roy_predictions, daily_dpoy_predictions,
+                          nba_mvp_ladder)}
 
 
 def main():

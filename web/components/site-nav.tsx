@@ -8,17 +8,20 @@ const LINKS = [
 
 export type NavHref = (typeof LINKS)[number]["href"];
 
-/** Award-race switcher shown in each dashboard header. `current` is the active href. */
+/** Award-race switcher (segmented pill control) shown in each dashboard header. */
 export function SiteNav({ current }: { current: NavHref }) {
   return (
-    <nav aria-label="Award races" className="flex gap-5 text-sm">
+    <nav aria-label="Award races" className="inline-flex rounded-full bg-panel p-1 ring-1 ring-line">
       {LINKS.map((l) => (
         <Link
           key={l.href}
           href={l.href}
           title={l.title}
           aria-current={l.href === current ? "page" : undefined}
-          className={l.href === current ? "text-zinc-100" : "text-zinc-500 transition-colors hover:text-zinc-300"}
+          className={
+            "rounded-full px-4 py-1.5 text-sm font-semibold transition-colors " +
+            (l.href === current ? "bg-white text-brand shadow-sm ring-1 ring-line" : "text-muted hover:text-ink")
+          }
         >
           {l.label}
         </Link>
